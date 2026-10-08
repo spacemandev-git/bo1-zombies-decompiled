@@ -1,7 +1,16 @@
 #pragma once
 #include <d3d9.h>
 #include "r_material.h"
+#if defined(BO1_WEB) && !defined(_WIN32)
+// web: RAD's headers (radbase.h) detect the platform from _WIN32; the web build declares Bink as on Windows (same
+// structures). The Bink library itself is not linked: src/web/web_cinematic.cpp stubs the Bink API (no video opens,
+// so every cinematic ends at once).
+#define _WIN32 1
 #include <binklib/binktextures.h>
+#undef _WIN32
+#else
+#include <binklib/binktextures.h>
+#endif
 
 #define CINEMATIC_INVALID_IMAGE_FRAME -1
 #define BINK_MISC_BUFFER_SIZE 1572864

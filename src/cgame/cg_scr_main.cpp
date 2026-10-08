@@ -28,6 +28,7 @@
 #include "cg_sound.h"
 #include <sound/snd_public_async.h>
 #include <sound/snd_utils.h>
+#include <client/gpad_core.h> // mod (gpad): rumble builtins
 #include <win32/win_shared.h>
 #include <client/splitscreen.h>
 #include <qcommon/dobj_management.h>
@@ -72,6 +73,75 @@ void NULLSUB()
 void NULLSUB2(scr_entref_t ref)
 {
 
+}
+
+// mod (gpad): client script rumble builtins. Retail PC had them as empty stubs (NULLSUB / NULLSUB2 in the tables
+// below): ent playRumbleOnEntity( [localClientNum,] name ), ent playRumbleLoopOnEntity( [localClientNum,] name ),
+// ent stopRumble( [localClientNum,] [name] ), playRumbleOnPosition( [localClientNum,] name, origin ). The local
+// player's entity rumbles the pad; any other entity rumbles from its position with distance falloff. Names map to
+// built-in envelopes (client/gpad_rumble.cpp, no rumble assets on PC). docs/controllers.md
+static const char *CScr_ModRumbleName(unsigned int *nextParam)
+{
+    unsigned int numParam = Scr_GetNumParam(SCRIPTINSTANCE_CLIENT);
+    unsigned int index = 0;
+    const char *name = "";
+
+    if ( index < numParam && Scr_GetType(index, SCRIPTINSTANCE_CLIENT) == VAR_INTEGER ) // localClientNum
+        ++index;
+    if ( index < numParam
+        && (Scr_GetType(index, SCRIPTINSTANCE_CLIENT) == VAR_STRING || Scr_GetType(index, SCRIPTINSTANCE_CLIENT) == VAR_ISTRING) )
+    {
+        name = Scr_GetString(index, SCRIPTINSTANCE_CLIENT);
+        ++index;
+    }
+    *nextParam = index;
+    return name;
+}
+
+static void CScr_ModRumbleOnEntity(scr_entref_t entref, bool loop)
+{
+    unsigned int nextParam;
+    const char *name = CScr_ModRumbleName(&nextParam);
+    centity_s *cent;
+
+    if ( entref.classnum || entref.client || entref.entnum >= MAX_CL_ENTNUM )
+        return;
+    if ( CG_GetClientNumForLocalClient(entref.client) == entref.entnum )
+    {
+        GPad_Rumble_Play(name, loop);
+        return;
+    }
+    cent = CG_GetEntity(entref.client, entref.entnum);
+    GPad_Rumble_PlayAtPosition(name, cent->pose.origin, loop);
+}
+
+static void CScr_ModPlayRumbleOnEntity(scr_entref_t entref)
+{
+    CScr_ModRumbleOnEntity(entref, false);
+}
+
+static void CScr_ModPlayRumbleLoopOnEntity(scr_entref_t entref)
+{
+    CScr_ModRumbleOnEntity(entref, true);
+}
+
+static void CScr_ModStopRumble(scr_entref_t entref)
+{
+    unsigned int nextParam;
+
+    GPad_Rumble_Stop(CScr_ModRumbleName(&nextParam));
+}
+
+static void CScr_ModPlayRumbleOnPosition()
+{
+    unsigned int nextParam;
+    const char *name = CScr_ModRumbleName(&nextParam);
+    float origin[3];
+
+    if ( nextParam >= Scr_GetNumParam(SCRIPTINSTANCE_CLIENT) )
+        return;
+    Scr_GetVector(nextParam, origin, SCRIPTINSTANCE_CLIENT);
+    GPad_Rumble_PlayAtPosition(name, origin, false);
 }
 
 const BuiltinMethodDef client_methods[] =
@@ -140,9 +210,9 @@ const BuiltinMethodDef client_methods[] =
   { "movey", CScrEntCmd_MoveY, 0 },
   { "movez", CScrEntCmd_MoveZ, 0 },
   { "rotatevelocity", CScrCmd_RotateVelocity, 0 },
-  { "playrumbleonentity", NULLSUB2, 0 },
-  { "playrumblelooponentity", NULLSUB2, 0 },
-  { "stoprumble", NULLSUB2, 0 },
+  { "playrumbleonentity", CScr_ModPlayRumbleOnEntity, 0 }, // mod (gpad): retail NULLSUB2
+  { "playrumblelooponentity", CScr_ModPlayRumbleLoopOnEntity, 0 }, // mod (gpad): retail NULLSUB2
+  { "stoprumble", CScr_ModStopRumble, 0 }, // mod (gpad): retail NULLSUB2
   { "startpoisoning", CScr_StartPoisoning, 0 },
   { "stoppoisoning", CScr_StopPoisoning, 0 },
   { "ispoisoned", CScr_IsPoisoned, 0 },
@@ -323,7 +393,7 @@ BuiltinFunctionDef client_functions[154] =
   { "stoplocalsound", &CScr_StopLocalSound, 0 },
   { "soundtimescale", &CScr_SoundTimescale, 0 },
   { "precacherumble", &CScr_PrecacheRumble, 0 },
-  { "playrumbleonposition", &NULLSUB, 0 },
+  { "playrumbleonposition", &CScr_ModPlayRumbleOnPosition, 0 }, // mod (gpad): retail NULLSUB
   { "getdvar", &CScr_GetDvar, 0 },
   { "getdvarcolorred", &CScr_GetDvarColorRed, 0 },
   { "getdvarcolorgreen", &CScr_GetDvarColorGreen, 0 },
@@ -5528,7 +5598,10 @@ void __cdecl CScr_GetLocalPlayers()
         // scripts' waitforallclients then waits on clienthassnapshot; MP's snapshot /
         // predicted-entity gates below otherwise skip portal and perk initialization.
         cGameGlob = CG_GetLocalClientGlobals(0);
-        Scr_AddEntityNum(cGameGlob->predictedPlayerState.clientNum, 0, SCRIPTINSTANCE_CLIENT, 0);
+        // mod (coop): before the first snapshot predictedPlayerState.clientNum is still 0; a co-op client whose
+        // client number is not 0 would get entity 0 (another player). cg.clientNum is set from the gamestate.
+        Scr_AddEntityNum(cGameGlob->nextSnap ? cGameGlob->predictedPlayerState.clientNum : cGameGlob->clientNum, 0,
+                         SCRIPTINSTANCE_CLIENT, 0);
         Scr_AddArray(SCRIPTINSTANCE_CLIENT);
         return;
     }

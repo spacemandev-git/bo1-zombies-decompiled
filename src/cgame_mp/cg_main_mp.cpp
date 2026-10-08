@@ -1,3 +1,4 @@
+#include <cfloat> // FLT_MAX (MSVC headers include it transitively)
 #include <qcommon/cm_mapkit.h>
 #include <database/db_registry.h>
 #include <game_sp/g_sp_measure.h>
@@ -80,6 +81,9 @@
 #include <cgame/cg_spawn.h>
 #include <gfx_d3d/r_shader_constant_set.h>
 #include "cg_animtree_mp.h"
+#include <clientscript/cscr_animtree.h> // mod (coop): CG_SP_RegisterRemoteAnimTrees
+#include <clientscript/cscr_main.h> // mod (coop)
+#include <server_mp/sv_init_mp.h> // mod (coop): CS_ANIMTREES
 #include <gfx_d3d/r_cinematic.h>
 #include "cg_snapshot_mp.h"
 #include <glass/glass_client.h>
@@ -2963,6 +2967,8 @@ void __cdecl CG_Init(int localClientNum, int serverMessageNum, int serverCommand
     cgameGlob->bgs.Random = CG_random;
     cgameGlob->clientNum = clientNum;
     cgameGlob->drawHud = 1;
+    if ( Dvar_FindVar("bo1_sp_stances") ) // mod (coop): stance permissions do not carry over to a new level (cg_predict_mp.cpp)
+        Dvar_SetStringByName("bo1_sp_stances", (char *)"0");
 
     Dvar_SetBoolByName("r_grassEnable", 0);
 
@@ -3038,7 +3044,9 @@ void __cdecl CG_Init(int localClientNum, int serverMessageNum, int serverCommand
     }
     if ( !com_sv_running->current.enabled )
         Mantle_CreateAnims(Hunk_AllocXAnimClient);
-    if ( !com_sv_running->current.enabled )
+    // mod (coop): not on an SP level, as the server (G_InitGame): the MP dog xanims are not in the SP zones. A co-op
+    // client without a local server got ~60 missing-xanim warnings here; a listen server's client never had dog anims.
+    if ( !com_sv_running->current.enabled && !Com_IsSPLevel() )
         Dog_CreateAnims(Hunk_AllocXAnimClient);
     VehAnim_Init();
 
@@ -3779,6 +3787,102 @@ void __cdecl CG_InitDof(GfxDepthOfField *dof)
     dof->farBlur = 0.0f;
 }
 
+// mod (coop): the anim trees of a co-op client that has no local server (an SP level, com_sv_running 0). A listen
+// server's client shares the server's trees (G_SP_GetActorAnims, Scr_GetAnims); this client builds its own, in the
+// SERVER script instance like MP's pure client (CGScr_LoadScriptsAndAnims), from the tree names the host publishes in
+// CS_ANIMTREES (SV_SP_PublishAnimTrees, sv_init_mp.cpp) in the host's order, so an entity's es.animtreeIndex names the
+// same tree on both machines. MP's pure client compiles the server's scripts to get them; the SP scripts do not
+// compile in the same order as the host's, so the names come from the host instead. BG_LoadAnim builds them all,
+// after the player's "multiplayer" tree has its anim names. Scr_FreeScripts (end of CG_Init) zeroes the instance's
+// tree count, so the trees are kept here: CG_SP_GetRemoteAnims (es.animtreeIndex), CG_SP_GetActorAnims (generic_human,
+// what SP's client gets in CScr_LoadScripts, SP 0x006555A0).
+static XAnim_s *cg_remoteAnimTrees[128];
+static int cg_remoteAnimTreeCount;
+static XAnim_s *cg_remoteActorAnims;
+
+static int CG_SP_RegisterRemoteAnimTrees()
+{
+    char name[64];
+    int count = 0;
+    bool stop = false;
+
+    cg_remoteAnimTreeCount = 0;
+    cg_remoteActorAnims = 0;
+    Scr_BeginLoadScripts(SCRIPTINSTANCE_SERVER, 0);
+    Scr_PostCompileScripts(SCRIPTINSTANCE_SERVER);
+    Scr_EndLoadScripts(SCRIPTINSTANCE_SERVER);
+    for ( int cs = CS_ANIMTREES; cs <= CS_ANIMTREES_LAST && !stop; ++cs )
+    {
+        const char *s = CL_GetConfigString(cs);
+        while ( *s && !stop )
+        {
+            int len = 0;
+            while ( *s == ' ' )
+                ++s;
+            while ( *s && *s != ' ' )
+            {
+                if ( len < (int)sizeof(name) - 1 )
+                    name[len++] = *s;
+                ++s;
+            }
+            name[len] = 0;
+            if ( !len )
+                continue;
+            if ( !Scr_IsIdentifier(name) || count >= 127 )
+            {
+                // a gap would shift every later index: keep the trees before it only
+                Com_PrintWarning(14, "coop: host anim tree '%s' (#%d) not usable; the host's later trees are not built here\n", name, count + 1);
+                stop = true;
+                break;
+            }
+            Scr_ClientUsingTree(SCRIPTINSTANCE_SERVER, name);
+            ++count;
+        }
+    }
+    gScrAnimPub[SCRIPTINSTANCE_SERVER].animTreeNames = 0;
+    return count;
+}
+
+static void CG_SP_KeepRemoteAnimTrees(int published)
+{
+    extern ClientTreeStorage gGScrXAnimTreesForClient[2][128]; // cscr_animtree.cpp
+    int count = (int)gScrAnimPub[SCRIPTINSTANCE_SERVER].xanim_num[0];
+
+    if ( count > 127 )
+        count = 127;
+    cg_remoteAnimTreeCount = count;
+    cg_remoteActorAnims = 0;
+    for ( int i = 1; i <= count; ++i )
+    {
+        cg_remoteAnimTrees[i] = gScrAnimPub[SCRIPTINSTANCE_SERVER].xanim_lookup[0][i].anims;
+        const char *treeName = gGScrXAnimTreesForClient[0][i].strName;
+        if ( treeName && !I_stricmp(treeName, "generic_human") && i <= published )
+            cg_remoteActorAnims = cg_remoteAnimTrees[i];
+    }
+    Com_Printf(14, "coop: client without a local server: %d anim trees from the host, %d built, actor tree generic_human %s\n",
+        published, count, cg_remoteActorAnims ? "found" : "MISSING (actors are not drawn)");
+    if ( !published )
+        Com_PrintWarning(14, "coop: the host published no anim trees (CS_ANIMTREES empty: a host build without the co-op changes?)\n");
+}
+
+// mod (coop): the actors' generic_human tree: the listen server's, or the one a co-op client without a local server
+// built from the host's list (NULL if the host did not send it: actors are then not drawn on this client)
+XAnim_s *CG_SP_GetActorAnims()
+{
+    if ( com_sv_running->current.enabled )
+        return G_SP_GetActorAnims();
+    return cg_remoteActorAnims;
+}
+
+// mod (coop): the tree of an es.animtreeIndex on a client without a local server (MP read Scr_GetClientAnims, whose
+// count Scr_FreeScripts has zeroed by then); NULL for an index the host did not publish
+XAnim_s *CG_SP_GetRemoteAnims(unsigned int animtreeIndex)
+{
+    if ( !animtreeIndex || (int)animtreeIndex > cg_remoteAnimTreeCount )
+        return 0;
+    return cg_remoteAnimTrees[animtreeIndex];
+}
+
 int CGScr_LoadScriptsAndAnims()
 {
     int address[128]; // [esp+0h] [ebp-218h] BYREF
@@ -3791,6 +3895,14 @@ int CGScr_LoadScriptsAndAnims()
     functions.address = address;
     mapname = Dvar_GetString("mapname");
     gametype = Dvar_GetString("g_gametype");
+    if ( Com_IsSPLevel() ) // mod (coop): no MP server scripts on an SP level; the host's anim tree list instead
+    {
+        const int published = CG_SP_RegisterRemoteAnimTrees();
+        BG_LoadAnim(mapname);
+        CG_SP_KeepRemoteAnimTrees(published);
+        BG_PostLoadAnim(mapname);
+        return 0;
+    }
     CGScr_LoadScripts(mapname, gametype, &functions);
     BG_LoadAnim(mapname);
     BG_PostLoadAnim(mapname);
@@ -3799,7 +3911,12 @@ int CGScr_LoadScriptsAndAnims()
 
 void __cdecl CG_LoadAnimTrees(int localClientNum, cg_s *cgameGlob, const char *mapname, bool loading_scripts)
 {
-    if ( loading_scripts && com_sv_running->current.enabled )
+    // mod (coop): on an SP level CS_ANIMTREES now carries the host's tree list for co-op clients without a local
+    // server (CGScr_LoadScriptsAndAnims); the listen server's own client must not build those trees a second time. It
+    // only begins the anim tree load, as CGScr_LoadAnimTrees did with no CS_ANIMTREES set (no server wrote them).
+    if ( loading_scripts && com_sv_running->current.enabled && Com_IsSPLevel() )
+        Scr_BeginLoadAnimTrees(SCRIPTINSTANCE_SERVER, 0);
+    else if ( loading_scripts && com_sv_running->current.enabled )
         CGScr_LoadAnimTrees();
     if ( !cgameGlob->bgs.animData->generic_human.tree.anims && loading_scripts && com_sv_running->current.enabled )
     {
@@ -3843,7 +3960,23 @@ void __cdecl CG_LoadAnimTreeInstances(int localClientNum)
     // asserted). MEASURED choice: the listen server's generic_human actor tree (G_SP_GetActorAnims, SP 0x005687F0),
     // the one the server side uses (g_main_mp.cpp G_LoadAnimTreeInstances). SP's client gets its own through
     // 0x004BD6F0(CLIENT, "generic_human", ...) in CScr_LoadScripts (SP 0x006555A0), not ported yet.
-    anims = Com_IsSPLevel() ? G_SP_GetActorAnims() : Dog_GetAnims(); // every SP level (the front end has actors, no dogs)
+    // mod (coop): CG_SP_GetActorAnims: the listen server's tree, or a co-op client's own (CGScr_LoadScriptsAndAnims)
+    anims = Com_IsSPLevel() ? CG_SP_GetActorAnims() : Dog_GetAnims(); // every SP level (the front end has actors, no dogs)
+
+    // mod (coop): a client without a local server whose host sent no generic_human tree has none: no actor trees (the
+    // actors are not drawn: CG_UpdateActorDObj makes no DObj without a tree) instead of XAnimCreateTree(NULL)
+    if ( !anims && Com_IsSPLevel() )
+    {
+        Com_PrintWarning(14, "coop: no actor anim tree on this client: actors are not drawn\n");
+        for ( int i = 0; i < MAX_ACTORS; ++i )
+            BG_SP_GetActorInfo(&cgameGlob->bgs, i)->pXAnimTree = 0;
+        for ( int i = 0; i < Com_GetMaxActorCorpses(); ++i )
+        {
+            cgs->actorCorpseInfo[i].pXAnimTree = 0;
+            cgs->actorCorpseInfo[i].entityNum = -1;
+        }
+        return;
+    }
 
     iassert(anims);
 

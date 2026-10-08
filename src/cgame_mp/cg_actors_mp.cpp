@@ -73,11 +73,13 @@ static XAnimTree_s **CG_SP_GetActorClientTreeSlot(int localClientNum, centity_s 
 // KB uses the listen server's actor anims, the MEASURED choice of CG_LoadAnimTreeInstances, cg_main_mp.cpp).
 static XAnim_s *CG_SP_GetActorClientAnims(const centity_s *cent)
 {
+    // mod (coop): a client without a local server reads its own trees, built from the host's list (cg_main_mp.cpp
+    // CGScr_LoadScriptsAndAnims); G_SP_GetActorAnims is the listen server's and is NULL or stale there
     if ( !cent->nextState.animtreeIndex )
-        return G_SP_GetActorAnims();
+        return CG_SP_GetActorAnims();
     if ( com_sv_running->current.enabled )
         return Scr_GetAnims(cent->nextState.animtreeIndex, SCRIPTINSTANCE_SERVER);
-    return Scr_GetClientAnims(cent->nextState.animtreeIndex, SCRIPTINSTANCE_SERVER);
+    return CG_SP_GetRemoteAnims(cent->nextState.animtreeIndex);
 }
 
 // zombies: SP 0x00454430 (unnamed, called by CG_UpdateActorDObj 0x005F9920 and 0x005D8BA0) with 0x0060A060 - the
@@ -320,7 +322,8 @@ void __cdecl CG_ResetActorEntity(int localClientNum, cg_s *cgameGlob, centity_s 
     {
         __debugbreak();
     }
-    XAnimClearTreeGoalWeights(pAnimTree, 0, 0.0, -1);
+    if ( pAnimTree ) // mod (coop): none on a co-op client whose host sent no actor tree (CG_LoadAnimTreeInstances)
+        XAnimClearTreeGoalWeights(pAnimTree, 0, 0.0, -1);
     CG_UpdateActorDObj(localClientNum, cent, ai);
     CG_SP_ReplayEntityAnimCommands(localClientNum, cent->nextState.number);
 }

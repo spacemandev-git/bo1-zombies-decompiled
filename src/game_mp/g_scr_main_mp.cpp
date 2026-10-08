@@ -78,6 +78,7 @@
 #include <gfx_d3d/r_primarylights.h>
 #include <game_sp/scr_sp_tables.h>
 #include <game_sp/g_sp_levelstart.h>
+#include <client/gpad_core.h> // mod (gpad): rumble builtins
 #include <game_sp/actor_sp_ext.h>
 #include <game_sp/g_sp_measure.h>
 #include <game_sp/g_anim_commands_sp.h>
@@ -16312,6 +16313,74 @@ void GScr_SetPlayerStatsForMatchRecording()
 #endif
 }
 
+// mod (gpad): server script rumble builtins. Retail PC had them as empty stubs (FUNCTION_NULLSUB / METHOD_NULLSUB in the
+// tables below). ent playRumbleOnEntity( name ) / playRumbleLoopOnEntity( name ): on a player it rumbles that player's
+// pad; on any other entity it rumbles from the entity's position with distance falloff. playRumbleOnPosition( name,
+// origin ) / playRumbleLoopOnPosition( name, origin ), ent stopRumble( name ), stopAllRumbles(). The requests go to the
+// pad code of this process (client/gpad_rumble.cpp, built-in envelopes per name, no rumble assets on PC), which plays a
+// player-targeted one only when it is this process's own player: the host of a listen server feels its rumbles,
+// remote co-op players do not (nothing is networked). docs/controllers.md
+static const char *GScr_ModRumbleName()
+{
+    if ( !Scr_GetNumParam(SCRIPTINSTANCE_SERVER) )
+        return "";
+    return Scr_GetString(0, SCRIPTINSTANCE_SERVER);
+}
+
+static void GScr_ModRumbleOnEntity(scr_entref_t entref, bool loop)
+{
+    const char *name = GScr_ModRumbleName();
+    gentity_s *ent;
+
+    if ( entref.classnum ) // not an entity: ignored (retail PC ignored every rumble call; GetEntity would raise a script error)
+        return;
+    ent = GetEntity(entref);
+    if ( ent->client )
+        GPad_Rumble_PlayForClient(name, ent->s.number, loop);
+    else
+        GPad_Rumble_PlayAtPosition(name, ent->r.currentOrigin, loop);
+}
+
+static void ScrCmd_ModPlayRumbleOnEntity(scr_entref_t entref)
+{
+    GScr_ModRumbleOnEntity(entref, false);
+}
+
+static void ScrCmd_ModPlayRumbleLoopOnEntity(scr_entref_t entref)
+{
+    GScr_ModRumbleOnEntity(entref, true);
+}
+
+static void ScrCmd_ModStopRumble(scr_entref_t entref)
+{
+    GPad_Rumble_Stop(GScr_ModRumbleName());
+}
+
+static void GScr_ModRumbleOnPosition(bool loop)
+{
+    float origin[3];
+
+    if ( Scr_GetNumParam(SCRIPTINSTANCE_SERVER) < 2 )
+        return;
+    Scr_GetVector(1u, origin, SCRIPTINSTANCE_SERVER);
+    GPad_Rumble_PlayAtPosition(GScr_ModRumbleName(), origin, loop);
+}
+
+static void GScr_ModPlayRumbleOnPosition()
+{
+    GScr_ModRumbleOnPosition(false);
+}
+
+static void GScr_ModPlayRumbleLoopOnPosition()
+{
+    GScr_ModRumbleOnPosition(true);
+}
+
+static void GScr_ModStopAllRumbles()
+{
+    GPad_Rumble_Stop(0);
+}
+
 BuiltinFunctionDef functions[] =
 {
   { "createprintchannel", GScr_CreatePrintChannel, 1 },
@@ -16602,9 +16671,9 @@ BuiltinFunctionDef functions[] =
   { "kick", GScr_KickPlayer, 0 },
   { "ban", GScr_BanPlayer, 0 },
   { "map", GScr_LoadMap, 0 },
-  { "playrumbleonposition", FUNCTION_NULLSUB, 0 },
-  { "playrumblelooponposition", FUNCTION_NULLSUB, 0 },
-  { "stopallrumbles", FUNCTION_NULLSUB, 0 },
+  { "playrumbleonposition", GScr_ModPlayRumbleOnPosition, 0 }, // mod (gpad): retail FUNCTION_NULLSUB
+  { "playrumblelooponposition", GScr_ModPlayRumbleLoopOnPosition, 0 }, // mod (gpad): retail FUNCTION_NULLSUB
+  { "stopallrumbles", GScr_ModStopAllRumbles, 0 }, // mod (gpad): retail FUNCTION_NULLSUB
   { "soundexists", ScrCmd_SoundExists, 0 },
   { "issplitscreen", GScr_GetAssignedTeam, 0 },
   { "isglobalstatsserver", Scr_IsGlobalStatsServer, 0 },
@@ -17233,9 +17302,9 @@ BuiltinMethodDef methods_3[] =
   { "playsoundtoplayer", ScrCmd_PlaySoundToPlayer, 0 },
   { "playloopsound", ScrCmd_PlayLoopSound, 0 },
   { "stoploopsound", ScrCmd_StopLoopSound, 0 },
-  { "playrumbleonentity", METHOD_NULLSUB, 0 },
-  { "playrumblelooponentity", METHOD_NULLSUB, 0 },
-  { "stoprumble", METHOD_NULLSUB, 0 },
+  { "playrumbleonentity", ScrCmd_ModPlayRumbleOnEntity, 0 }, // mod (gpad): retail METHOD_NULLSUB
+  { "playrumblelooponentity", ScrCmd_ModPlayRumbleLoopOnEntity, 0 }, // mod (gpad): retail METHOD_NULLSUB
+  { "stoprumble", ScrCmd_ModStopRumble, 0 }, // mod (gpad): retail METHOD_NULLSUB
   { "delete", ScrCmd_Delete, 0 },
   { "setmodel", ScrCmd_SetModel, 0 },
   { "setenemymodel", ScrCmd_SetEnemyModel, 0 },
@@ -17528,9 +17597,9 @@ void __cdecl GScr_AddEntity(gentity_s *pEnt)
 void __cdecl Scr_ParseGameTypeList()
 {
     if ( useFastFile->current.enabled )
-        ((void (__cdecl *)(void (*)()))Scr_ParseGameTypeList_FastFile)(Scr_ParseGameTypeList_FastFile);
+        BO1_FNCAST(void (__cdecl *)(void (*)()), Scr_ParseGameTypeList_FastFile)(Scr_ParseGameTypeList_FastFile); // web: BO1_FNCAST
     else
-        ((void (__cdecl *)(int (*)()))Scr_ParseGameTypeList_LoadObj)(Scr_ParseGameTypeList_LoadObj);
+        BO1_FNCAST(void (__cdecl *)(int (*)()), Scr_ParseGameTypeList_LoadObj)(Scr_ParseGameTypeList_LoadObj);
 }
 
 int Scr_ParseGameTypeList_LoadObj()

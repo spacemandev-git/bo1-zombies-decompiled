@@ -109,7 +109,7 @@ void __cdecl RB_Resource_Callback(void (__cdecl *callback)())
         __debugbreak();
     }
     action->action = ACTION_CALLBACK;
-    action->resource = callback;
+    action->resource = (void *)callback; // web: explicit cast (MSVC converts function pointers to void * implicitly)
     RB_Resource_Unlock();
 }
 
@@ -125,7 +125,7 @@ void __cdecl RB_Resource_CallbackParam(void (__cdecl *callback)(void *), void *d
         __debugbreak();
     }
     action->action = ACTION_CALLBACKPARAM;
-    action->resource = callback;
+    action->resource = (void *)callback; // web: explicit cast (MSVC converts function pointers to void * implicitly)
     action->data = data;
     RB_Resource_Unlock();
 }
@@ -316,7 +316,13 @@ void RB_Resource_Update_Internal()
                 }
                 goto LABEL_2;
             case ACTION_RELEASE:
+#ifdef BO1_WEB
+                // web: IUnknown::Release through the shim's own vtable; the decompiled raw slot call below passes an
+                // extra argument, which traps in WebAssembly (indirect call signature mismatch)
+                ((IUnknown *)action->resource)->Release();
+#else
                 (*(void (__thiscall **)(void *, void *))(*(unsigned int *)action->resource + 8))(action->resource, action->resource);
+#endif
                 goto LABEL_2;
             case ACTION_LOADTEXTURE:
                 Image_LoadFromData(

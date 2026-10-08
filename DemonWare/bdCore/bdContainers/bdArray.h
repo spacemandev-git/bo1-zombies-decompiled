@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <new> // placement new (MSVC headers include it transitively)
 
 #include <DemonWare/bdCore/bdMemory/bdMemory.h>
 

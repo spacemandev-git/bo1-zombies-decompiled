@@ -1,4 +1,6 @@
 #pragma once
+#include <cstddef> // offsetof (MSVC headers include it transitively)
+#include <new> // web: placement new (MSVC headers include it transitively)
 #include <universal/assertive.h>
 #include <cstring>
 

@@ -341,16 +341,76 @@ void __cdecl CL_ConnectHackDW()
 
 bool __cdecl CL_CDKeyValidate(netadr_t addr)
 {
-#ifdef WIN32
+#if defined(WIN32) || defined(BO1_WEB) // web: no Steam (g_steamInitialized stays false)
     // no-steam: without a logged-on Steam client there is no ticket to make; connect without one (the server
     // decides: SV_GetChallenge admits ticketless clients only when it runs without Steam itself).
     if (!g_steamInitialized)
         return true;
-    return Steam_UpdateClientAuthTicket(addr);
+    if (Steam_UpdateClientAuthTicket(addr))
+        return true;
+    // mod (coop): a co-op host does not check tickets (SV_GetChallenge), so a failed ticket request is not fatal there
+    if (Dvar_GetBool("systemlink"))
+    {
+        Com_PrintWarning(0, "coop: no Steam ticket for %s; connecting without one (a co-op host does not check it)\n", NET_AdrToString(addr));
+        return true;
+    }
+    return false;
 #else
 #error Steam Auth for Arch
     return false;
 #endif
+}
+
+// mod (coop): "+connect <host>" on the command line of a zombies client (bo1_zombies; tools/coop.ps1, the web lobby).
+// Com_Init runs the command at once, then, with no local server, loads the SP front end (Com_LoadFrontEnd_SP queues
+// "map frontend"), which would take the client off the connection again and clear systemlink. So until the front end
+// has run once (its G_InitGame also sets the snapshot layout from the bo1_mod_* dvars, which CL_ParseGamestate compares
+// with the host's), the connect waits; then it runs as if typed in the front end's console (CL_Connect_f kills the
+// front end's local server), with systemlink / onlinegame as they were on the command line. If the front end never
+// comes up (no local server for 30 s), it connects anyway.
+static char cl_coopPendingServer[256];
+static char cl_coopPendingSystemlink[16];
+static char cl_coopPendingOnlinegame[16];
+static int cl_coopPendingSince;
+static bool cl_coopFrontEndSeen;
+
+static bool CL_CoopDeferConnect(const char *server)
+{
+    if ( cl_coopFrontEndSeen || !bo1_zombies || !bo1_zombies->current.enabled || IsDedicatedServer() )
+        return false;
+    I_strncpyz(cl_coopPendingServer, server, sizeof(cl_coopPendingServer));
+    I_strncpyz(cl_coopPendingSystemlink, Dvar_GetString("systemlink"), sizeof(cl_coopPendingSystemlink));
+    I_strncpyz(cl_coopPendingOnlinegame, Dvar_GetString("onlinegame"), sizeof(cl_coopPendingOnlinegame));
+    cl_coopPendingSince = Sys_Milliseconds();
+    Com_Printf(0, "coop: connect %s waits for the front end to load (systemlink \"%s\")\n", server, cl_coopPendingSystemlink);
+    return true;
+}
+
+// mod (coop): once per client frame (CL_RunOncePerClientFrame): issues the connect CL_CoopDeferConnect held back
+void CL_CoopConnectFrame()
+{
+    static int frontEndSince; // when the front end's server was first seen running (its client may still be loading)
+    if ( cl_coopFrontEndSeen )
+        return;
+    const bool frontEndRunning = com_sv_running->current.enabled && Com_IsSPFrontEndRunning();
+    if ( frontEndRunning && !frontEndSince )
+        frontEndSince = Sys_Milliseconds();
+    const bool frontEndUp = frontEndRunning
+        && (CL_GetLocalClientConnectionState(0) == CA_ACTIVE || Sys_Milliseconds() - frontEndSince > 20000);
+    const bool gaveUp = cl_coopPendingServer[0] && !com_sv_running->current.enabled
+        && Sys_Milliseconds() - cl_coopPendingSince > 30000;
+    if ( frontEndUp || (com_sv_running->current.enabled && !Com_IsSPFrontEndRunning()) )
+        cl_coopFrontEndSeen = true; // a local server ran: later connects are typed ones
+    if ( !cl_coopPendingServer[0] || (!frontEndUp && !gaveUp) )
+        return;
+    cl_coopFrontEndSeen = true;
+    if ( cl_coopPendingSystemlink[0] )
+        Dvar_SetFromStringByName("systemlink", cl_coopPendingSystemlink);
+    if ( cl_coopPendingOnlinegame[0] )
+        Dvar_SetFromStringByName("onlinegame", cl_coopPendingOnlinegame);
+    Com_Printf(0, "coop: %s; connecting to %s\n", frontEndUp ? "front end loaded" : "no front end after 30 s", cl_coopPendingServer);
+    Cbuf_AddText(0, va("connect %s\n", cl_coopPendingServer));
+    cl_coopPendingServer[0] = 0;
 }
 
 void __cdecl CL_Connect_f()
@@ -363,6 +423,8 @@ void __cdecl CL_Connect_f()
 
     if ( Cmd_Argc() == 2 )
     {
+        if ( CL_CoopDeferConnect(Cmd_Argv(1)) ) // mod (coop): a command-line connect waits for the front end
+            return;
         SND_StopSounds(SND_STOP_ALL);
         CL_AllocatePerLocalClientMemory();
         clUI = CL_GetLocalClientUIGlobals(0);
@@ -370,7 +432,11 @@ void __cdecl CL_Connect_f()
         clc = CL_GetLocalClientConnection(0);
         clc->serverMessage[0] = 0;
         server = Cmd_Argv(1);
-        if ( !strcmp(server, "localhost") )
+        // mod (coop): stop the local server for every server, not only "localhost". The zombies main menu is a local
+        // server (the "frontend" level); left running, its server reads this client's packets from the socket
+        // (Com_ServerPacketEvent; the client reads it only without a local server) and the host's replies never
+        // arrive. SV_Frame below shuts it down at once, as for "localhost".
+        if ( !strcmp(server, "localhost") || com_sv_running->current.enabled )
             SV_KillLocalServer();
         cl_serverLoadingMap = 0;
         g_waitingForServer = 0;
@@ -396,7 +462,13 @@ void __cdecl CL_Connect_f()
                 v1);
             if ( NET_IsLocalAddress(clc->serverAddress) || CL_CDKeyValidate(clc->serverAddress) ) // ADD CDKey for steam
             {
-                if ( Sys_IsLANAddress(clc->serverAddress) 
+                // mod (coop): a host outside the LAN ranges (the internet, Tailscale 100.64/10, Hamachi 25/8) is joined
+                // like a LAN one. Retail waited for a DemonWare login here (else branch, dw_connectafterlogin), which KB
+                // does not have (BO1_DW unset), so such a connect only ever went to CA_DISCONNECTED. The host still
+                // decides who may join (SV_GetChallenge, SV_DirectConnect, g_password).
+                if ( !Sys_IsLANAddress(clc->serverAddress) )
+                    Com_Printf(0, "coop: %s is outside the LAN ranges: connecting over the internet (the host's sv_maxRate caps the snapshot rate)\n", cls.servername);
+                if ( true // mod (coop): was Sys_IsLANAddress(clc->serverAddress)
 #ifdef BO1_DW
                     || dwGetLogOnStatus(0) == 4 
 #endif

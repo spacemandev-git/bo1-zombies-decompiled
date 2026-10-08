@@ -113,6 +113,10 @@ void __cdecl CG_InitEntities(int localClientNum);
 void __cdecl CG_InitViewDimensions(int localClientNum);
 void __cdecl CG_InitDof(GfxDepthOfField *dof);
 int CGScr_LoadScriptsAndAnims();
+// mod (coop): the actors' anim tree (listen server's, or a client without a local server's own; NULL if the host did not
+// send it) and the tree of an es.animtreeIndex on a client without a local server (cg_main_mp.cpp)
+struct XAnim_s *CG_SP_GetActorAnims();
+struct XAnim_s *CG_SP_GetRemoteAnims(unsigned int animtreeIndex);
 void __cdecl CG_LoadAnimTrees(int localClientNum, cg_s *cgameGlob, const char *mapname, bool loading_scripts);
 void __cdecl CG_LoadAnimTreeInstances(int localClientNum);
 void __cdecl CG_SetupGameInformation(int localClientNum);

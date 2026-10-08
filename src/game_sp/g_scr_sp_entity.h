@@ -27,6 +27,10 @@ struct gclient_s;
 // SP 0x01C88DE4: the frame's peak compressed snapshot size, fed by SV_SendMessageToClient
 // (SP 0x0049E716), read by oktospawn.
 void G_SP_NoteSnapshotSize(bool firstClient, int size);
+// mod (coop): level notify "snapacknowledged" (wait_network_frame with remote clients): SV_UserMove notes a client's
+// snapshot acknowledgement, SV_RunFrame sends the notify once per server frame before G_RunFrame.
+void G_SP_NoteSnapAcknowledged();
+void G_SP_NotifySnapAcknowledged();
 // SP gclient+0x584: setscripthintstring's hint, read by Player_UpdateCursorHints (SP 0x00603889).
 bool G_SP_GetScriptHintString(const gclient_s *client, int *hintString);
 // SP svFlags 0x100 set by transmittargetname (no reader ported yet).

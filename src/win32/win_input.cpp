@@ -1,5 +1,6 @@
 #include "win_input.h"
 #include "win_gamepad.h"
+#include <client/gpad_core.h> // mod (gpad): IN_GamepadsMove / IN_GamepadsIdle, gpad_background
 
 #include "win_wndproc.h"
 #include <universal/assertive.h>
@@ -10,41 +11,7 @@
 #include "win_shared.h"
 #include <client_mp/cl_input_mp.h>
 
-GamePadButton buttonList[32] =
-{
-  (GamePadButton)GPAD_X,
-  (GamePadButton)3,
-  (GamePadButton)GPAD_A,
-  (GamePadButton)1,
-  (GamePadButton)GPAD_B,
-  (GamePadButton)2,
-  (GamePadButton)GPAD_Y,
-  (GamePadButton)4,
-  (GamePadButton)GPAD_L_TRIG,
-  (GamePadButton)18,
-  (GamePadButton)GPAD_R_TRIG,
-  (GamePadButton)19,
-  (GamePadButton)GPAD_L_SHLDR,
-  (GamePadButton)5,
-  (GamePadButton)GPAD_R_SHLDR,
-  (GamePadButton)6,
-  (GamePadButton)GPAD_START,
-  (GamePadButton)14,
-  (GamePadButton)GPAD_BACK,
-  (GamePadButton)15,
-  (GamePadButton)GPAD_L3,
-  (GamePadButton)16,
-  (GamePadButton)GPAD_R3,
-  (GamePadButton)17,
-  (GamePadButton)GPAD_UP,
-  (GamePadButton)20,
-  (GamePadButton)GPAD_DOWN,
-  (GamePadButton)21,
-  (GamePadButton)GPAD_LEFT,
-  (GamePadButton)22,
-  (GamePadButton)GPAD_RIGHT,
-  (GamePadButton)23
-};
+// mod (gpad): buttonList (pad button -> key code pairs) moved to client/gpad_core.cpp with IN_GamepadsMove.
 
 
 
@@ -216,69 +183,23 @@ void __cdecl IN_Frame()
         {
             IN_ActivateMouse(0);
             IN_MouseMove();
-            if ( IN_IsForegroundWindow() )
-                IN_GamepadsMove();
+            // mod (gpad): IN_GamepadsMove was called here, so with in_mouse 0 (no mouse initialized) the pad was never read
         }
         else
         {
             IN_DeactivateMouse();
         }
     }
+    // mod (gpad): read the pads whenever the game window is active and in the foreground (retail: the same, but only with
+    // the mouse initialized), or always with gpad_background 1. Otherwise release whatever was held, once.
+    if ( in_appactive && IN_IsForegroundWindow() || gpad_background && gpad_background->current.enabled )
+        IN_GamepadsMove();
+    else
+        IN_GamepadsIdle();
 }
 
-void IN_GamepadsMove()
-{
-    int ry; // [esp+0h] [ebp-2Ch]
-    unsigned int butIndex; // [esp+4h] [ebp-28h]
-    int controllerIndex; // [esp+8h] [ebp-24h]
-    int rightTrig; // [esp+Ch] [ebp-20h]
-    int lx; // [esp+14h] [ebp-18h]
-    char gpadPresent; // [esp+1Bh] [ebp-11h]
-    DWORD time; // [esp+1Ch] [ebp-10h]
-    int rx; // [esp+20h] [ebp-Ch]
-    int leftTrig; // [esp+24h] [ebp-8h]
-    int ly; // [esp+28h] [ebp-4h]
-
-    gpadPresent = 0;
-    GPad_UpdateAll();
-    time = Sys_Milliseconds();
-    for (controllerIndex = 0; controllerIndex < 1; ++controllerIndex)
-    {
-        if (GPad_IsActive(controllerIndex))
-        {
-            gpadPresent = 1;
-            lx = (int)(GPad_GetStick(controllerIndex, GPAD_LX) * 65535.0);
-            ly = (int)(GPad_GetStick(controllerIndex, GPAD_LY) * 65535.0);
-            rx = (int)(GPad_GetStick(controllerIndex, GPAD_RX) * 65535.0);
-            ry = (int)(GPad_GetStick(controllerIndex, GPAD_RY) * 65535.0);
-            leftTrig = (int)(GPad_GetButton(controllerIndex, GPAD_L_TRIG) * 65535.0);
-            rightTrig = (int)(GPad_GetButton(controllerIndex, GPAD_R_TRIG) * 65535.0);
-            CL_GamepadEvent(controllerIndex, 0, rx);
-            CL_GamepadEvent(controllerIndex, 1u, ry);
-            CL_GamepadEvent(controllerIndex, 2u, lx);
-            CL_GamepadEvent(controllerIndex, 3u, ly);
-            CL_GamepadEvent(controllerIndex, 5u, leftTrig);
-            CL_GamepadEvent(controllerIndex, 4u, rightTrig);
-            for (butIndex = 0; butIndex < 0x10; ++butIndex)
-            {
-                if (GPad_IsButtonPressed(controllerIndex, buttonList[2 * butIndex]))
-                {
-                    CL_GamepadButtonEventForPort(controllerIndex, buttonList[2 * butIndex + 1], 1, time, buttonList[2 * butIndex]);
-                }
-                else if (GPad_ButtonRequiresUpdates(controllerIndex, buttonList[2 * butIndex]))
-                {
-                    CL_GamepadButtonEventForPort(controllerIndex, buttonList[2 * butIndex + 1], 2, time, buttonList[2 * butIndex]);
-                }
-                else if (GPad_IsButtonReleased(controllerIndex, buttonList[2 * butIndex]))
-                {
-                    CL_GamepadButtonEventForPort(controllerIndex, buttonList[2 * butIndex + 1], 0, time, buttonList[2 * butIndex]);
-                }
-            }
-        }
-    }
-    if (gpad_present && gpad_present->current.color[0] != gpadPresent)
-        Dvar_SetBool((dvar_s*)gpad_present, gpadPresent);
-}
+// mod (gpad): IN_GamepadsMove (the per-frame pad poll) moved to client/gpad_core.cpp: it is platform-neutral now (reads
+// the pad through client/gpad_backend.h) and the web build shares it.
 
 void IN_MouseMove()
 {

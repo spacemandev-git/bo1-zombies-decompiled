@@ -68,7 +68,7 @@ void R_WarnOncePerFrame(GfxWarningType warnType, ...)
 {
     char message[1028]; // [esp+0h] [ebp-410h] BYREF
     float frameRate; // [esp+408h] [ebp-8h]
-    char *vargs; // [esp+40Ch] [ebp-4h]
+    va_list vargs; // [esp+40Ch] [ebp-4h] (web: was char *, MSVC's va_list type)
     va_list va; // [esp+41Ch] [ebp+Ch] BYREF
 
     va_start(va, warnType);

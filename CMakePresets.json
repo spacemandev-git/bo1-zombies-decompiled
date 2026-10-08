@@ -1,0 +1,55 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "web",
+      "displayName": "Browser build (Emscripten / WebAssembly, Release)",
+      "description": "Needs the Emscripten SDK activated in the shell (source $EMSDK/emsdk_env.sh). See docs/web-port.md.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/web",
+      "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "web-debug",
+      "inherits": "web",
+      "displayName": "Browser build (Emscripten / WebAssembly, Debug: iassert on, -O1 -g; output build/web-debug/bin)",
+      "binaryDir": "${sourceDir}/build/web-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BO1_WEB_OUTPUT_DIR": "${sourceDir}/build/web-debug/bin"
+      }
+    },
+    {
+      "name": "web-node",
+      "inherits": "web",
+      "displayName": "Headless Node.js test build (NODEFS instead of OPFS, no canvas)",
+      "binaryDir": "${sourceDir}/build/web-node",
+      "cacheVariables": {
+        "BO1_WEB_NODE": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "web",
+      "configurePreset": "web"
+    },
+    {
+      "name": "web-debug",
+      "configurePreset": "web-debug"
+    },
+    {
+      "name": "web-node",
+      "configurePreset": "web-node"
+    }
+  ]
+}

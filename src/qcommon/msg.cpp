@@ -12,12 +12,24 @@ int __cdecl MSG_RoundFloatToInt(float value)
 {
     const double bias = 9.313225746154785e-10;
     int result;
+#ifdef BO1_WEB
+    // web: the same arithmetic without x87. The float widens exactly, value + 2^-30 is exact in double for every
+    // |value| < 2^23 (larger floats are integers and round back to themselves), and fistp rounds to nearest even
+    // under the default control word, as rint does. This is the x87 result at 53- and 64-bit precision control (the
+    // Windows thread default; the host's server thread writes snapshots with it). Out of range: the x87 "integer
+    // indefinite" 0x80000000.
+    const double sum = (double)value + bias;
+    if (!(sum >= -2147483648.0 && sum < 2147483648.0))
+        return (int)0x80000000;
+    result = (int)__builtin_rint(sum);
+#else
     __asm
     {
         fld value
         fadd bias
         fistp result
     }
+#endif
     return result;
 }
 

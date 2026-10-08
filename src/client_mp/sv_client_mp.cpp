@@ -1,4 +1,5 @@
 #include <game_sp/g_sp_client.h>
+#include <game_sp/g_scr_sp_entity.h> // mod (coop): G_SP_NoteSnapAcknowledged
 #include <cgame/cg_sp_nettrace.h>
 #include "sv_client_mp.h"
 #include <server_mp/sv_main_mp.h>
@@ -168,8 +169,15 @@ void __cdecl SV_GetChallenge(netadr_t from)
 
     // no-steam: a server without a logged-on Steam client cannot check any ticket (Steam_CheckClientTicket refuses
     // everyone), so it admits clients unauthenticated, like a LAN server. With Steam the checks below are unchanged.
-    if (!g_steamInitialized)
+    // mod (coop): a co-op host (bo1_expected_players > 0 or systemlink 1, set by the co-op launch) admits clients the
+    // same way when it runs with Steam: co-op players are invited friends, may play without Steam (or on one Steam
+    // account for two copies on one PC, which BeginAuthSession refuses), and the ticket names the address the client
+    // used, which a VPN (Tailscale, Hamachi) or a router changes.
+    const bool coopNoTicket = Dvar_GetInt("bo1_expected_players") > 0 || Dvar_GetBool("systemlink");
+    if (!g_steamInitialized || coopNoTicket)
     {
+        if (g_steamInitialized)
+            Com_Printf(15, "coop: %s admitted without a Steam ticket check\n", NET_AdrToString(from));
         challenge->steamID64 = strtoull(clientSteamID64, NULL, 10);
         challenge->pingTime = svs.time;
         NET_OutOfBandPrint(NS_SERVER, from, va("challengeResponse %i", challenge->challenge));
@@ -983,7 +991,28 @@ void __cdecl SV_DirectConnect(netadr_t from)
         {
             endIndex = sv_maxclients->current.integer;
         }
-        for (i = startIndex; i < endIndex; ++i)
+        // mod (coop): the userinfo key bo1_slot asks for a client number. The co-op lobby gives every player the
+        // number of the character they picked (web/shared/launch.ts, tools/coop.ps1), and the retail map scripts give
+        // a player the character of their entity number. Taken when it is a free number below sv_maxclients, else the
+        // first free number as before. The host's own client comes through here too (loopback).
+        {
+            const char *slotKey = Info_ValueForKey(userinfo, "bo1_slot");
+            const int wanted = *slotKey ? atoi(slotKey) : -1;
+            if (wanted >= startIndex && wanted < endIndex && !svs.clients[wanted].header.state)
+            {
+                clients = &svs.clients[wanted];
+                newcl = clients;
+                password = Info_ValueForKey(userinfo, "password");
+                clients->reservedSlot = SV_GetSlotForPasswordIfFree(password);
+                Com_Printf(15, "coop: %s gets the client number it asked for: %i\n", NET_AdrToString(from), wanted);
+            }
+            else if (wanted >= 0)
+            {
+                Com_Printf(15, "coop: %s asked for client number %i, not free or not below sv_maxclients %i: first free number\n",
+                    NET_AdrToString(from), wanted, endIndex);
+            }
+        }
+        for (i = startIndex; !newcl && i < endIndex; ++i) // mod (coop): no search when bo1_slot gave the number
         {
             clients = &svs.clients[i];
             if (!clients->header.state)
@@ -2926,6 +2955,7 @@ void __cdecl SV_UserMove(client_t *cl, msg_t *msg, int delta)
                 }
                 if ( cl->frames[cl->messageAcknowledge & 0x1F].messageAcked <= 0 )
                     cl->frames[cl->messageAcknowledge & 0x1F].messageAcked = Sys_Milliseconds();
+                G_SP_NoteSnapAcknowledged(); // mod (coop): level notify "snapacknowledged" next frame (SV_RunFrame)
                 if ( cl->header.state == CS_CLIENTLOADING )
                     SV_ClientEnterWorld(cl, cmds);
                 if ( !sv_pure->current.enabled || cl->pureAuthentic )

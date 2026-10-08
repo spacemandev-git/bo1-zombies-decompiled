@@ -37,6 +37,8 @@
 #include <client_mp/cl_main_pc_mp.h>
 #include <qcommon/files.h>
 #include <game_sp/g_sp_loadgame.h>
+#include <clientscript/cscr_animtree.h> // mod (coop): SV_SP_PublishCoopConfig
+#include <clientscript/cscr_parser.h> // mod (coop): Scr_RegisterDumpCommands
 
 const dvar_t *sv_gametype;
 const dvar_t *sv_privateClients;
@@ -510,6 +512,68 @@ void __cdecl SV_SetServerDvarsBeforeScriptsInit()
         Dvar_SetBoolByName("g_allowvote", 0);
 }
 
+// mod (coop): what a co-op client without a local server needs from the host, set when the game and its scripts have
+// started (SV_SpawnServer, after SV_InitGameProgs), before any gamestate goes out:
+//  - CS_ANIMTREES (unused by MP's server): the SERVER script instance's anim tree names in index order, separated by
+//    spaces over the 16 configstrings. The client builds the same trees in the same order (cg_main_mp.cpp
+//    CGScr_LoadScriptsAndAnims), so es.animtreeIndex and the actors' generic_human tree work there. A listen server's
+//    own client does not read them on an SP level (CG_LoadAnimTrees).
+//  - bo1_coop_net (systeminfo): the actor slot count and entity number bits the snapshot layout depends on
+//    (bo1_mod_maxactors / bo1_mod_netents); a client with another layout leaves with a message (CL_ParseGamestate).
+// And one "coop: host" line with the settings every machine must share, for comparing logs.
+static void SV_SP_PublishCoopConfig()
+{
+    extern ClientTreeStorage gGScrXAnimTreesForClient[2][128]; // cscr_animtree.cpp
+    extern int g_maxActors;
+    char buffer[256];
+    int cs = CS_ANIMTREES;
+    int len = 0;
+    int published = 0;
+
+    if ( !Com_IsSPLevel() )
+        return;
+    const int count = (int)gScrAnimPub[SCRIPTINSTANCE_SERVER].xanim_num[1];
+    buffer[0] = 0;
+    for ( int i = 1; i <= count && i < 128; ++i )
+    {
+        const char *name = gGScrXAnimTreesForClient[1][i].strName;
+        const int nameLen = name ? (int)strlen(name) : 0;
+        if ( !nameLen || nameLen > 200 )
+        {
+            // a gap would shift every later index on the client: publish the trees before it only
+            Com_PrintWarning(15, "coop: anim tree #%d has no usable name; trees from it on are not sent to clients\n", i);
+            break;
+        }
+        if ( len + 1 + nameLen >= 240 )
+        {
+            if ( cs == CS_ANIMTREES_LAST )
+            {
+                Com_PrintWarning(15, "coop: CS_ANIMTREES full; anim trees from #%d on are not sent to clients\n", i);
+                break;
+            }
+            SV_SetConfigstring(cs++, buffer);
+            len = 0;
+            buffer[0] = 0;
+        }
+        if ( len )
+            buffer[len++] = ' ';
+        memcpy(buffer + len, name, nameLen + 1);
+        len += nameLen;
+        ++published;
+    }
+    if ( len )
+        SV_SetConfigstring(cs++, buffer);
+    for ( ; cs <= CS_ANIMTREES_LAST; ++cs )
+        SV_SetConfigstring(cs, (char *)"");
+    Dvar_SetStringByName("bo1_coop_net", va("%d %d", g_maxActors, g_entNumBits));
+    Com_Printf(15, "coop: host: map %s sv_maxclients %d systemlink %d bo1_expected_players %d bo1_expected_timeout %d "
+        "bo1_lobby_chars \"%s\" fs_game \"%s\" fs_mods \"%s\" bo1_mod_zones \"%s\" bo1_coop_net \"%d %d\" anim trees %d of %d published\n",
+        sv_mapname->current.string, sv_maxclients->current.integer, Dvar_GetBool("systemlink"),
+        Dvar_GetInt("bo1_expected_players"), Dvar_GetInt("bo1_expected_timeout"), Dvar_GetString("bo1_lobby_chars"),
+        Dvar_GetString("fs_game"), Dvar_GetString("fs_mods"), Dvar_GetString("bo1_mod_zones"), g_maxActors, g_entNumBits,
+        published, count);
+}
+
 void __cdecl    SV_SpawnServer(int controllerIndex, char *server, int mapIsPreloaded, int savegame)
 {
     //jpeg_decompress_struct *v10; // [esp+0h] [ebp-84h]
@@ -741,6 +805,7 @@ void __cdecl    SV_SpawnServer(int controllerIndex, char *server, int mapIsPrelo
         SV_InitGameProgs(savepersist);
         ProfLoad_End();
     }
+    SV_SP_PublishCoopConfig(); // mod (coop): anim tree names, bo1_coop_net, "coop: host" log line
 
 
     SV_CreateBaseline();
@@ -996,6 +1061,7 @@ void SV_UpdateHostnameDefault()
 void __cdecl SV_Init()
 {
     SV_AddOperatorCommands();
+    Scr_RegisterDumpCommands(); // mod (coop): bo1_dumpscript / bo1_dumpscripts (cscr_parser.cpp)
     Demo_RegisterDvars();
     SV_BotRegisterDvars();
     sv_gametype = _Dvar_RegisterString("g_gametype", "tdm", 0x24u, "Current game type");
@@ -1084,6 +1150,17 @@ void __cdecl SV_Init()
                                         IsDedicatedServer() ? sv_dedicatedmaxclients->current.integer : 30,
                                         5u,
                                         "The maximum number of clients that can connect to a server");
+    // mod (coop): the co-op launch (docs/multiplayer.md; web/shared/launch.ts, tools/coop.ps1 set them on the host's
+    // command line). None is archived, so a later solo game is retail again. bo1_lobby_chars and bo1_coop_net are
+    // systeminfo dvars: every client gets the host's value with the gamestate (CL_SystemInfoChanged).
+    _Dvar_RegisterInt("bo1_expected_players", 0, 0, 32, 0,
+        "coop: players the host waits for before round 1 (getnumexpectedplayers, with systemlink 1); 0 = no co-op launch");
+    _Dvar_RegisterInt("bo1_expected_timeout", 60, 0, 3600, 0,
+        "coop: seconds of level time after which getnumexpectedplayers counts only the players in the game (0 = wait forever)");
+    _Dvar_RegisterString("bo1_lobby_chars", (char *)"", 8u,
+        "coop: character 0-3 for each client number, '-' unused, e.g. \"0 1 - 3 2\" (mods/coop, the score HUD)");
+    _Dvar_RegisterString("bo1_coop_net", (char *)"", 8u,
+        "coop: the host's network layout \"<actor slots> <entity number bits>\"; a client with another one leaves (CL_ParseGamestate)");
     sv_maxRate = _Dvar_RegisterInt("sv_maxRate", 5000, 0, 25000, 5u, "Maximum bit rate");
     sv_minPing = _Dvar_RegisterInt("sv_minPing", 0, 0, 999, 5u, "Minimum ping allowed on the server");
     sv_maxPing = _Dvar_RegisterInt("sv_maxPing", 0, 0, 999, 5u, "Maximum ping allowed on the server");

@@ -11,13 +11,13 @@ void __cdecl Sys_SetupTLCallbacks(int hunkMemSize)
     tlSystemCallbacks callbacks; // [esp+0h] [ebp-20h] BYREF
 
     s_tlHunkUser = Hunk_UserCreate(hunkMemSize, HU_SCHEME_DEFAULT, 4u, 0, "TL_MemAlloc support", 37);
-    callbacks.ReadFile = (bool (__cdecl *)(const char *, tlFileBuf *, unsigned int, unsigned int))TL_ReadFile;
-    callbacks.ReleaseFile = (void (__cdecl *)(tlFileBuf *))TL_ReleaseFile;
+    callbacks.ReadFile = BO1_FNCAST(bool (__cdecl *)(const char *, tlFileBuf *, unsigned int, unsigned int), TL_ReadFile);
+    callbacks.ReleaseFile = BO1_FNCAST(void (__cdecl *)(tlFileBuf *), TL_ReleaseFile);
     callbacks.CriticalError = TL_CriticalError;
     callbacks.Warning = TL_Warning;
     callbacks.DebugPrint = (void (__cdecl *)(const char *))TL_DebugPrint;
-    callbacks.MemAlloc = (void *(__cdecl *)(unsigned int, unsigned int, unsigned int))TL_MemAlloc;
-    callbacks.MemRealloc = (void *(__cdecl *)(void *, unsigned int, unsigned int, unsigned int))RETURN_ZERO32;
+    callbacks.MemAlloc = BO1_FNCAST(void *(__cdecl *)(unsigned int, unsigned int, unsigned int), TL_MemAlloc);
+    callbacks.MemRealloc = BO1_FNCAST(void *(__cdecl *)(void *, unsigned int, unsigned int, unsigned int), RETURN_ZERO32);
     callbacks.MemFree = TL_MemFree;
     tlSetSystemCallbacks(&callbacks);
 }

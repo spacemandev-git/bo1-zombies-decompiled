@@ -18,8 +18,20 @@
 #include <cstdint>
 #include <cmath>
 
+// web: BO1_FNCAST(T, fn) - a cast of the function fn to the function pointer type T where the call through T passes
+// other arguments than fn declares (decompiled code calls (name) functions as (name, alloc), 3-parameter allocators
+// through 4-parameter table slots, ...). x86 cdecl tolerates that; WebAssembly traps on an indirect call whose type
+// is not the callee's. Windows: the plain cast. Web: a thunk of type T calling fn with the arguments it declares
+// (src/web/web_fncast.h; candidates: src/web/tools/fnptr_audit.py).
+#ifdef BO1_WEB
+#include <web/web_fncast.h>
+#define BO1_FNCAST(T, fn) (bo1_web_fncast<T, fn>())
+#else
+#define BO1_FNCAST(T, fn) ((T)(fn))
+#endif
+
 //======================= WIN32 DEFINES =================================
-#ifdef WIN32
+#if defined(WIN32) || defined(BO1_WEB) // web: the same x86-style (little-endian, 32-bit) definitions
 
 #define	MAC_STATIC
 

@@ -34,21 +34,21 @@ ALLOCATION_SCHEME_FUNCTIONS g_HunkUserAllocationSchemeMap[4] =
     (HunkUser *(*)(void *, int, HU_ALLOCATION_SCHEME, unsigned int, void *, const char *, int))Hunk_UserDebugInit,
     Hunk_UserDebugReset,
     Hunk_UserDebugDestroy,
-    (void *(*)(HunkUser *, int, int, const char *))Hunk_UserDebugAlloc,
+    BO1_FNCAST(void *(*)(HunkUser *, int, int, const char *), Hunk_UserDebugAlloc),
     (void(__cdecl *)(HunkUser *, void *))Hunk_UserDebugFree
   },
   {
     (HunkUser *(*)(void *, int, HU_ALLOCATION_SCHEME, unsigned int, void *, const char *, int))Hunk_FirstFitInit,
     Hunk_FirstFitReset,
     Hunk_FirstFitDestroy,
-    (void *(*)(HunkUser *, int, int, const char *))Hunk_FirstFitAlloc,
+    BO1_FNCAST(void *(*)(HunkUser *, int, int, const char *), Hunk_FirstFitAlloc),
     (void(__cdecl *)(HunkUser *, void *))Hunk_FirstFitFree
   },
   {
     (HunkUser *(*)(void *, int, HU_ALLOCATION_SCHEME, unsigned int, void *, const char *, int))Hunk_FixedInit,
     Hunk_FixedReset,
     Hunk_FixedDestroy,
-    (void *(*)(HunkUser *, int, int, const char *))Hunk_FixedAlloc,
+    BO1_FNCAST(void *(*)(HunkUser *, int, int, const char *), Hunk_FixedAlloc),
     (void(__cdecl *)(HunkUser *, void *))Hunk_FixedFree
   }
 };

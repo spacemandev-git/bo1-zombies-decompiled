@@ -134,13 +134,58 @@ static bool SP_IsFrontendMap()
     return !I_strnicmp(map, "menu_", 5) || !I_stricmp(map, "frontend");
 }
 
+// mod (coop): what SP's party count (max(Party_CountMembers, 1), SP 0x005ae190) gives in a co-op game, without a party:
+// the host's bo1_expected_players (the co-op launch sets it to the lobby's player count: web/shared/launch.ts,
+// tools/coop.ps1), or more when more players are in the game already. The retail scripts wait before round 1 until
+// that many players are in the game; a player who never arrives would hold the game forever, so bo1_expected_timeout
+// seconds of level time after the level started (default 60, 0 = wait forever) the count becomes the players in the
+// game then. Without bo1_expected_players (systemlink / onlinegame set some other way) it counts the clients that
+// are on the server (connecting included), as the solo path below does, instead of the old script error.
+static int G_SP_CoopExpectedPlayers()
+{
+    static int s_lastLevelTime = -1;
+    static int s_lastValue = -1;
+    const int expected = Dvar_GetInt("bo1_expected_players");
+    const int timeoutSec = Dvar_GetInt("bo1_expected_timeout");
+    int inGame = 0;
+    int onServer = 0;
+    int value;
+
+    for (int i = 0; i < sv_maxclients->current.integer; ++i)
+    {
+        const client_t *cl = &svs.clients[i];
+        if (cl->header.state > CS_ZOMBIE)
+            ++onServer;
+        if (cl->header.state == CS_ACTIVE && cl->connectState == 10 /*CA_ACTIVE*/) // as getnumconnectedplayers
+            ++inGame;
+    }
+    const bool timedOut = expected > 0 && timeoutSec > 0 && level.time >= timeoutSec * 1000;
+    if (expected <= 0)
+        value = onServer;
+    else if (timedOut)
+        value = inGame > 0 ? inGame : 1;
+    else
+        value = expected > inGame ? expected : inGame;
+    if (level.time < s_lastLevelTime) // a new level
+        s_lastValue = -1;
+    s_lastLevelTime = level.time;
+    if (value != s_lastValue)
+    {
+        Com_Printf(15, "coop: getnumexpectedplayers %d (bo1_expected_players %d, in the game %d, on the server %d, level time %d ms%s)\n",
+            value, expected, inGame, onServer, level.time, timedOut ? ", bo1_expected_timeout passed" : "");
+        s_lastValue = value;
+    }
+    return value;
+}
+
 // zombies: getnumexpectedplayers (SP 0x005e6b20).
 static void G_f_getnumexpectedplayers()
 {
     if (!SP_IsFrontendMap() && (Dvar_GetBool("onlinegame") || Dvar_GetBool("systemlink")))
     {
         // SP uses max(Party_CountMembers(&g_partyData), 1) here. KB has no party implementation.
-        Scr_Error("getnumexpectedplayers: SP party count is not ported (SP 0x005ae190)", false);
+        // mod (coop): was Scr_Error("getnumexpectedplayers: SP party count is not ported (SP 0x005ae190)")
+        Scr_AddInt(G_SP_CoopExpectedPlayers(), SCRIPTINSTANCE_SERVER);
         return;
     }
     int count = 0;
@@ -163,6 +208,17 @@ static void G_f_numremoteclients()
         // The SP front end's Zombies menu sets onlinegame 1 while the level's spawn threads call this.
         const int partyMembers = 1;
         count = (partyMembers > 1 ? partyMembers : 1) - 1;
+        // mod (coop): remote co-op clients exist now: the clients on the server from another machine (connecting
+        // included, as SP's party counts members still loading), not the host's loopback client, bots or test
+        // clients. Scripts that see > 0 pace themselves on snapshot acknowledgements (wait_network_frame:
+        // getsnapshotindexarray / snapshotacknowledged / level notify "snapacknowledged", g_scr_sp_entity.cpp).
+        for (int i = 0; i < sv_maxclients->current.integer; ++i)
+        {
+            const client_t *cl = &svs.clients[i];
+            if (cl->header.state >= CS_CONNECTED && !cl->bIsTestClient && !cl->bIsDemoClient
+                && cl->header.netchan.remoteAddress.type != NA_LOOPBACK && cl->header.netchan.remoteAddress.type != NA_BOT)
+                ++count;
+        }
     }
     Scr_AddInt(count, SCRIPTINSTANCE_SERVER);
 }
@@ -227,18 +283,35 @@ static gentity_s *SP_PlayerEntity(scr_entref_t entref)
     return ent;
 }
 
+// mod (coop): the stance bits (allowstand / allowcrouch / allowprone, 0x1C00000) for a client's own movement
+// prediction. A listen server's client reads them here (cg_predict_mp.cpp); SP sends them in pm_flags, which have no
+// free bits in KB, so a remote client gets them as the client dvar bo1_sp_stances (reliable 'v' command) on a change.
+static void SP_SendRemoteStances(int clientNum, unsigned int oldBits, unsigned int newBits)
+{
+    if ((oldBits & 0x1C00000) == (newBits & 0x1C00000) || clientNum < 0 || clientNum >= sv_maxclients->current.integer)
+        return;
+    const client_t *cl = &svs.clients[clientNum];
+    if (cl->header.state < CS_CONNECTED || cl->header.netchan.remoteAddress.type == NA_LOOPBACK
+        || cl->header.netchan.remoteAddress.type == NA_BOT)
+        return;
+    SV_GameSendServerCommand(clientNum, SV_CMD_RELIABLE, va("v bo1_sp_stances %u", newBits & 0x1C00000));
+}
+
 static void SP_AllowPermission(scr_entref_t entref, unsigned int mask)
 {
     gentity_s *ent = SP_PlayerEntity(entref);
     if (!ent)
         return;
     SPPlayerBuiltinState &state = G_SP_PlayerBuiltinState(ent->s.number);
+    const unsigned int oldBits = state.disabledActions; // mod (coop)
     if (Scr_GetInt(0, SCRIPTINSTANCE_SERVER))
     {
         state.disabledActions &= ~mask;
+        SP_SendRemoteStances(ent->s.number, oldBits, state.disabledActions); // mod (coop)
         return;
     }
     state.disabledActions |= mask;
+    SP_SendRemoteStances(ent->s.number, oldBits, state.disabledActions); // mod (coop)
 }
 
 static void G_m_getcurrentweaponclipammo(scr_entref_t entref)
@@ -321,6 +394,25 @@ static void G_m_allowstand(scr_entref_t entref)
     SP_AllowPermission(entref, SP_DISABLE_STAND);
 }
 
+// mod (coop): SP's entity 0 is always its host's player. A co-op host can have any client number (bo1_slot) and slot 0
+// can be empty or a remote player: the host's own (loopback) client's entity, else the lowest connected player's,
+// else entity 0 as before.
+static gentity_s *SP_HostPlayerEntity()
+{
+    gentity_s *first = nullptr;
+    for (int i = 0; i < sv_maxclients->current.integer; ++i)
+    {
+        const client_t *cl = &svs.clients[i];
+        if (cl->header.state < CS_CONNECTED || !g_entities[i].client)
+            continue;
+        if (cl->header.netchan.remoteAddress.type == NA_LOOPBACK)
+            return &g_entities[i];
+        if (!first)
+            first = &g_entities[i];
+    }
+    return first ? first : &g_entities[0];
+}
+
 // zombies: savegame (SP 0x007fad20). Queues through G_SaveGame (SP 0x0043c850, g_sp_savegame.cpp);
 // the queued request reaches SP's serializer failure return because KB has no SP save serializer.
 static void G_f_savegame()
@@ -328,7 +420,7 @@ static void G_f_savegame()
     const char *map = Dvar_GetString("mapname");
     if (SP_IsFrontendMap())
         return;
-    if (g_entities[0].health < 1)
+    if (SP_HostPlayerEntity()->health < 1) // mod (coop): was g_entities[0]
         Scr_Error("Attempting to save while dead\n", false);
     const char *name = Scr_GetString(0, SCRIPTINSTANCE_SERVER);
     if (!name[0])

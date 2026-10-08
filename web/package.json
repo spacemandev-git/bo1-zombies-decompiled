@@ -1,0 +1,17 @@
+{
+  "name": "bo1-web",
+  "private": true,
+  "type": "module",
+  "description": "Web distribution of BO1 Zombies: static host, lobby, WebRTC signaling and relay (served under BASE_PATH, default /bo1).",
+  "scripts": {
+    "dev": "bun run build && bun --watch server/index.ts",
+    "build": "bun run scripts/build.ts",
+    "start": "bun server/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0",
+    "typescript": "^5.9.0"
+  }
+}

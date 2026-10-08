@@ -12,6 +12,13 @@ set(DW_DIR  "${CMAKE_CURRENT_SOURCE_DIR}/DemonWare")
 
 include(cmake_files.cmake)
 
+# Browser build (cmake --preset web, Emscripten toolchain): cmake/web.cmake configures the same target from the lists
+# above, minus the Windows-only folders, plus src/web/. Everything below this block is the Windows (MSVC) build.
+if (EMSCRIPTEN)
+    include(cmake/web.cmake)
+    return()
+endif()
+
 # phys_gjk.cpp specific flag (experimental)
 set_source_files_properties(
     "${SRC_DIR}/physics/phys_gjk.cpp"

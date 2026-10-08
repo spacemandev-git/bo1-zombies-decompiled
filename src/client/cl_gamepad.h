@@ -144,3 +144,7 @@ void __cdecl CL_GamepadButtonEventForPort(
                 int buttonEvent,
                 unsigned int time,
                 GamePadButton button);
+
+// mod (gpad): see cl_gamepad.cpp and docs/controllers.md
+void __cdecl CL_GamepadRepeatScrollingButtons(int localClientNum, int controllerIndex);
+void __cdecl CL_GamepadDefaultBinds(int localClientNum);

@@ -3,6 +3,7 @@
 #include <game_sp/g_sp_measure.h>
 #include <game_sp/g_sp_savegame.h>
 #include <game_sp/g_sp_client.h>
+#include <game_sp/g_scr_sp_entity.h> // mod (coop): G_SP_NotifySnapAcknowledged
 #include <cgame/cg_sp_nettrace.h>
 #include <game_sp/g_sp_measure.h>
 #include <game_sp/g_sp_player_state.h>
@@ -1157,6 +1158,7 @@ void    SV_RunFrame()
     const bool spPacketReads = G_SP_IsZombieMode() && Sys_IsServerThread();
     if (spPacketReads)
         SV_RunEventLoop();
+    G_SP_NotifySnapAcknowledged(); // mod (coop): level notify "snapacknowledged" (wait_network_frame with remote clients)
     const bool measure = G_SP_MeasureEnabled();
     const unsigned int gameStart = measure ? Sys_Milliseconds() : 0;
     G_RunFrame(svs.time);

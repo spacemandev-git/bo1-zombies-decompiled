@@ -169,7 +169,9 @@ void __cdecl CG_DrawDisconnect(int localClientNum)
     // onlinegame is not, so a local game never shows it; and it skips pm_type 5 (intermission).
     if ( zombiemode && zombiemode->current.enabled )
     {
-        if ( Dvar_GetBool("sv_running") || cl_paused->current.integer || !Dvar_GetBool("onlinegame") )
+        // mod (coop): co-op over systemlink is an online game too: show the notice on clients
+        if ( Dvar_GetBool("sv_running") || cl_paused->current.integer
+            || (!Dvar_GetBool("onlinegame") && !Dvar_GetBool("systemlink")) )
             return;
         if ( CG_GetLocalClientGlobals(localClientNum)->nextSnap->ps.pm_type == 5 )
             return;

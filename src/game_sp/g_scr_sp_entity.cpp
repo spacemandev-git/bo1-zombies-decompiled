@@ -599,8 +599,15 @@ static int s_spPeakSnapshotSize;
 
 void G_SP_NoteSnapshotSize(bool firstClient, int size)
 {
-    if (firstClient)
+    // mod (coop): SP's client 0 is always its host, whose loopback client gets a snapshot every frame. A co-op host can
+    // have any client number and slot 0 can be empty (bo1_slot), so the peak also restarts with the first snapshot of
+    // a new server frame; without that oktospawn stays 0 for the rest of the game after one large snapshot.
+    static int s_spPeakSnapshotTime = -1;
+    if (firstClient || svs.time != s_spPeakSnapshotTime)
+    {
         s_spPeakSnapshotSize = 0;
+        s_spPeakSnapshotTime = svs.time;
+    }
     if (s_spPeakSnapshotSize <= size)
         s_spPeakSnapshotSize = size;
 }
@@ -1152,7 +1159,9 @@ static void G_f_snapshotacknowledged()
         if (!id || GetValueType(SCRIPTINSTANCE_SERVER, id) != VAR_INTEGER)
             continue;
         int value = GetVariableValueAddress(SCRIPTINSTANCE_SERVER, id)->u.intValue;
-        if (i >= 4)
+        // mod (coop): the time entry is the one after the client entries getsnapshotindexarray wrote (com_maxclients of
+        // them; SP's com_maxclients is 4). Retail 'i >= 4' read an active client 4..7's message number as a time.
+        if (i >= (unsigned int)com_maxclients->current.integer)
         {
             if (level.time >= value)
                 acknowledged = true;
@@ -1166,6 +1175,51 @@ static void G_f_snapshotacknowledged()
         Scr_AddInt(1, SCRIPTINSTANCE_SERVER);
     else
         Scr_AddUndefined(SCRIPTINSTANCE_SERVER);
+}
+
+// mod (coop): level notify "snapacknowledged". The retail scripts' wait_network_frame() waits for it and then asks
+// snapshotacknowledged() whenever numremoteclients() > 0. numremoteclients was always 0 in KB, so nothing sent it; with
+// remote co-op clients it now returns their count. SV_UserMove notes every client acknowledgement (packet code, any
+// thread); SV_RunFrame sends one notify per server frame before G_RunFrame, where the connect callbacks also run
+// scripts. Where SP sends it is not known (not checked against the SP exe); snapshotacknowledged's time entry
+// (level.time + 1000) ends the wait after a second at most either way.
+static volatile bool s_spSnapAcked;
+
+void G_SP_NoteSnapAcknowledged()
+{
+    s_spSnapAcked = true;
+}
+
+void G_SP_NotifySnapAcknowledged()
+{
+    // also every 250 ms of level time without an acknowledgement (no client sending): a waiting script then reaches
+    // snapshotacknowledged's time entry instead of waiting for a notify that never comes
+    static int s_lastNotifyTime;
+    const scriptInstance_t inst = SCRIPTINSTANCE_SERVER;
+    // only where numremoteclients() can be > 0 (g_scr_sp_players.cpp): a solo game stays as before
+    if (!Dvar_GetBool("systemlink") && !Dvar_GetBool("onlinegame"))
+    {
+        s_spSnapAcked = false;
+        return;
+    }
+    if (level.time < s_lastNotifyTime)
+        s_lastNotifyTime = 0; // a new level
+    if (!s_spSnapAcked && level.time - s_lastNotifyTime < 250)
+        return;
+    s_spSnapAcked = false;
+    s_lastNotifyTime = level.time;
+    if (!zombiemode->current.enabled || !gScrVarPub[inst].levelId || !gScrVarPub[inst].timeArrayId)
+        return;
+    // as Scr_NotifyNum_Internal (cscr_vm.cpp) does for an entity, with the level object and no parameters
+    Scr_ClearOutParams(inst);
+    VariableValue *startTop = gScrVmPub[inst].top;
+    const unsigned int inparamcount = gScrVmPub[inst].inparamcount;
+    const auto type = startTop->type;
+    startTop->type = (decltype(startTop->type))8; // VAR_PRECODEPOS, as Scr_NotifyNum_Internal
+    gScrVmPub[inst].inparamcount = 0;
+    VM_Notify(inst, gScrVarPub[inst].levelId, scr_const.snapacknowledged, gScrVmPub[inst].top);
+    startTop->type = type;
+    gScrVmPub[inst].inparamcount = inparamcount;
 }
 
 // zombies: start3dcinematic (SP 0x007fbd50): '<' <name> <flags> to every client. Flags start at 0x42;

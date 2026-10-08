@@ -181,7 +181,9 @@ struct broad_phase_terrain_query_callback // sizeof=0x4
     //{
     //    void (__thiscall *query)(broad_phase_terrain_query_callback *this, const broad_phase_environment_query_input *, broad_phase_environement_query_results *);
     //};
-    virtual void query(const broad_phase_environment_query_input *, broad_phase_environement_query_results *);
+    // web: defined inline (never called: derived classes override it) so the Itanium ABI (web build) emits this class's
+    // typeinfo and vtable where they are used, as MSVC always does; an undefined key function leaves them undefined
+    virtual void query(const broad_phase_environment_query_input *, broad_phase_environement_query_results *) {}
 };
 
 struct broad_phase_collision_pair // sizeof=0xC

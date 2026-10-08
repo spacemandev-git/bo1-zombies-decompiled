@@ -17,7 +17,7 @@ void __cdecl MemFile_CommonInit(
     if ( !s_isLzoInitialized )
     {
         //__lzopro_lzo_init_v2(0x2020u, 2, 4, 4, 4, 4, 4, 4, 4, 24);
-        lzo_init(0x2020u, 2, 4, 4, 4, 4, 4, 4, 4, 24);
+        lzo_init(); // web: the decompiled arguments were never used (MSVC drops extra macro arguments, C4002; clang rejects them)
         s_isLzoInitialized = 1;
     }
     if ( !memFile

@@ -89,12 +89,17 @@ function refresh() {
   var canNightmare = (m[0] == "zombie_pentagon" || m[0] == "zombie_theater") && !m[3];
   el("difficulty").disabled = !canNightmare;
   el("diffnote").innerHTML = canNightmare ? (m[0] == "zombie_theater" ? "Nightmare: George, an astronaut, napalm and shrieker zombies, hellhound packs, Five's thief and Ascension's space monkeys raiding the perk machines, all from round 1 on Kino." : "Nightmare: George, an astronaut, napalm and shrieker zombies on top of Five's thief and dogs.") + " Hell: several of each at once. Loads three extra maps' assets (slower start)." : "Five and Kino only.";
+  var coop = el("coopmode").value; // co-op section: only the fields of the chosen mode
+  el("coophost").disabled = coop != "join";
+  el("coopplayers").disabled = coop != "host";
+  el("coopname").disabled = el("coopchar").disabled = coop == "solo";
   el("cmd").innerText = args();
 }
 
 function args() {
   var m = MAPS[el("map").value];
-  var a = "+set fs_b \"" + R + "\" +set fs_h \"" + P + "\" +set logfile 2 +set net_ip 127.0.0.1 +set bo1_zombies 1" +
+  var coop = el("coopmode").value; // co-op: the default net_ip "localhost" listens on every network (127.0.0.1 only on this PC)
+  var a = "+set fs_b \"" + R + "\" +set fs_h \"" + P + "\" +set logfile 2" + (coop == "solo" ? " +set net_ip 127.0.0.1" : "") + " +set bo1_zombies 1" +
           " +set r_fullscreen 0 +set r_borderless 1 +set vid_xpos 0 +set vid_ypos 0" +
           " +set bo1_mod_sharedconfig 1"; // one players\config.cfg (binds, sensitivity) for every mod
   if (el("fps").checked) a += " +set bo1_fpscounter 1";
@@ -120,7 +125,19 @@ function args() {
   }
   if (!el("difficulty").disabled) a = nightmareFlags(el("difficulty").value, a, m[0]); // Normal = 0: unchanged
   if (el("quickrestart").checked) a += " +set bo1_mod_quickrestart 1"; // R after game over: SP_QuickRestart
+  if (coop != "solo") return a + coopArgs(coop, m[0]);
   return a + " +devmap " + m[0];
+}
+
+// co-op (docs/multiplayer.md; the same command lines as web/shared/launch.ts and tools\coop.ps1, up to four players
+// with different characters: client number = character, so the retail scripts need no mod; more players: coop.ps1)
+function coopArgs(coop, map) {
+  var name = el("coopname").value.replace(/[^A-Za-z0-9_\-.]/g, "_").substr(0, 15) || "player";
+  var a = " +set net_port 28960 +set systemlink 1 +set name " + name + " +set bo1_slot " + el("coopchar").value;
+  if (coop == "join") return a + " +connect " + el("coophost").value.replace(/\s/g, "") + ":28960";
+  var players = Math.max(1, Math.min(4, parseInt(el("coopplayers").value, 10) || 2));
+  return a + " +set sv_maxclients 4 +set bo1_expected_players " + players + " +set bo1_lobby_chars 0 1 2 3" +
+    " +set sv_maxRate 25000 +map " + map;
 }
 
 function play() {
@@ -164,6 +181,14 @@ function play() {
   <label><input type="checkbox" id="zinfo" onclick="refresh()"> Tab: zombie counter</label>
   <label><input type="checkbox" id="noperks" onclick="refresh()"> No perk machines <span class="note">with or without horde; Pack-a-Punch and the box stay</span></label>
   <label><input type="checkbox" id="quickrestart" checked onclick="refresh()"> R restarts after game over <span class="note">same map, same settings</span></label>
+</fieldset>
+<fieldset><legend>Co-op (online)</legend>
+  <select id="coopmode" onchange="refresh()"><option value="solo" selected>Solo</option><option value="host">Host a co-op game</option><option value="join">Join a co-op game</option></select>
+  <label>Name <input class="n" id="coopname" style="width: 120px" value="player" onkeyup="refresh()"></label>
+  <label>Character <select id="coopchar" onchange="refresh()"><option value="0">1 (Kino: Dempsey)</option><option value="1">2 (Nikolai)</option><option value="2">3 (Takeo)</option><option value="3">4 (Richtofen)</option></select></label>
+  <label>Players <input class="n" id="coopplayers" value="2" onkeyup="refresh()"> <span class="note">host: 1-4, each a different character</span></label>
+  <label>Host address <input class="n" id="coophost" style="width: 140px" value="" onkeyup="refresh()"> <span class="note">join: the host's IP (UDP 28960)</span></label>
+  <div class="note">Every player ticks the same mods above. Duplicate characters or 5-8 players: tools\coop.ps1. docs\multiplayer.md</div>
 </fieldset>
 <button onclick="play()">Play</button>
 <div id="cmd"></div>

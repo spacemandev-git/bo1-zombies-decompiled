@@ -7,6 +7,9 @@
 #include "r_font.h"
 #include "r_rendertarget.h"
 
+#if defined(BO1_WEB) && !defined(_D3D9_H_)
+#define _D3D9_H_ // web: nvapi.h declares its D3D9 entry points after the real d3d9.h's guard; the shim's d3d9.h has its own
+#endif
 #include <nvapi/nvapi.h>
 #include "r_shader_constant_set.h"
 

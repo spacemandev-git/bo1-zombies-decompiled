@@ -232,7 +232,11 @@ void __cdecl GamerProfile_UpdateDvarsFromProfile(int controllerIndex)
                 || (zombietron_discovered_override && zombietron_discovered_override->current.enabled)));
         Dvar_SetBool((dvar_s *)zombiefive_discovered, gamerSettings[controllerIndex].zombiefive_discovered
             || (zombiefive_discovered_override && zombiefive_discovered_override->current.enabled));
-        Dvar_SetBool((dvar_s *)gpad_enabled, gamerSettings[controllerIndex].gpadEnabled);
+        // mod (gpad): with gpad_autoenable 1 (default) gpad_enabled follows the connected pad (IN_GamepadsMove,
+        // client/gpad_core.cpp); retail copied the profile's value here, which switched a detected pad off again on
+        // every profile load. gpad_autoenable 0 = retail.
+        if ( !gpad_autoenable || !gpad_autoenable->current.enabled )
+            Dvar_SetBool((dvar_s *)gpad_enabled, gamerSettings[controllerIndex].gpadEnabled);
         Dvar_SetBool((dvar_s *)input_invertPitch, gamerSettings[controllerIndex].invertPitch);
         Dvar_SetFloat((dvar_s *)input_viewSensitivity, gamerSettings[controllerIndex].viewSensitivity);
         Dvar_SetInt((dvar_s *)team_indicator, gamerSettings[controllerIndex].team_indicator);

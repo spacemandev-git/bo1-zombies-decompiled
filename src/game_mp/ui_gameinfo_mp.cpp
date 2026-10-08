@@ -302,9 +302,9 @@ void __cdecl UI_LoadModsMap(FF_DIR source)
 int UI_LoadArenasFromFile()
 {
     if ( useFastFile->current.enabled )
-        return ((int (__cdecl *)(void (*)()))UI_LoadArenasFromFile_FastFile)(UI_LoadArenasFromFile_FastFile);
+        return BO1_FNCAST(int (__cdecl *)(void (*)()), UI_LoadArenasFromFile_FastFile)(UI_LoadArenasFromFile_FastFile);
     else
-        return ((int (__cdecl *)(const char *(*)()))UI_LoadArenasFromFile_LoadObj)(UI_LoadArenasFromFile_LoadObj);
+        return BO1_FNCAST(int (__cdecl *)(const char *(*)()), UI_LoadArenasFromFile_LoadObj)(UI_LoadArenasFromFile_LoadObj);
 }
 
 const char *UI_LoadArenasFromFile_LoadObj()

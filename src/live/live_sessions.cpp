@@ -5,6 +5,8 @@
 #include "live_win.h"
 #include <client/client.h>
 #include "live_sessions_win.h"
+#include <server_mp/sv_main_mp.h> // mod (coop): svs, to find the host by its loopback address
+#include <qcommon/common.h>
 
 unsigned __int8 s_qosPayload[8];
 
@@ -78,6 +80,11 @@ bool __cdecl Session_IsHost(SessionData_s *session, int clientNum)
         return false;
     if (Demo_IsEnabled())
         return clientNum == 1;
+    // mod (coop): the host is the listen server's own (loopback) client, which can have any client number (bo1_slot);
+    // retail always gave the host client 0
+    if (clientNum >= 0 && clientNum < com_maxclients->current.integer && svs.clients
+        && svs.clients[clientNum].header.state >= CS_CONNECTED)
+        return svs.clients[clientNum].header.netchan.remoteAddress.type == NA_LOOPBACK;
     return clientNum == 0;
 }
 
@@ -87,6 +94,12 @@ int __cdecl Session_HostNum(SessionData_s *session)
         && !Assert_MyHandler("C:\\projects_pc\\cod\\codsrc\\src\\live\\live_sessions.cpp", 340, 0, "%s", "session") )
     {
         __debugbreak();
+    }
+    // mod (coop): the loopback client's number (see Session_IsHost); 0 as in retail when there is none
+    for (int i = 0; svs.clients && i < com_maxclients->current.integer; ++i)
+    {
+        if (svs.clients[i].header.state >= CS_CONNECTED && svs.clients[i].header.netchan.remoteAddress.type == NA_LOOPBACK)
+            return i;
     }
     return 0;
 }

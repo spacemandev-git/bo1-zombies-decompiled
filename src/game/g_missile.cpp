@@ -448,7 +448,7 @@ void __cdecl G_MissileTrace(
             passEntityNum,
             contentmask,
             bulletPriorityMap,
-            (int (__cdecl *)(int, col_context_t *))collide_missle_entity_filter);
+            BO1_FNCAST(int (__cdecl *)(int, col_context_t *), collide_missle_entity_filter));
     }
     if ( results->startsolid )
     {

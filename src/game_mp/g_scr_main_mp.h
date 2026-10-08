@@ -10,7 +10,7 @@
 struct gentity_s;
 struct scr_animscript_t;
 struct pathnode_t;
-enum objectiveState_t;
+enum objectiveState_t : __int32; // underlying type as in bg_local.h (clang requires it to match)
 struct objective_t;
 struct XAnimTree_s;
 struct scr_animtree_t;

@@ -3252,7 +3252,7 @@ void    UpdateRigidBody(float delta_t)
         //Nitrous_ForEachBody<void (__cdecl *)(PhysObjUserData &,float)>(Phys_BodyGrabSnapshotNitrous, t);
         Nitrous_ForEachBody(Phys_BodyGrabSnapshotNitrous, t);
         //Nitrous_ForEachBody<void (__cdecl *)(PhysObjUserData &,float)>((void (__cdecl *)(PhysObjUserData *, float))Phys_DebugRender, t);
-        Nitrous_ForEachBody((void(__cdecl *)(PhysObjUserData *, float))Phys_DebugRender, t);
+        Nitrous_ForEachBody(BO1_FNCAST(void(__cdecl *)(PhysObjUserData *, float), Phys_DebugRender), t);
         render_debug_draw_gjk_trace_geom();
         NitrousVehicle::frame_prolog_all_systems(t);
     }

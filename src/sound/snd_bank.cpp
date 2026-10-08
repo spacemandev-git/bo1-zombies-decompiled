@@ -19,10 +19,10 @@ void *(__cdecl *const SND_FIND_ROW[9])(unsigned int) =
   (void*(*)(unsigned int))SND_FindRowGroup,
   (void*(*)(unsigned int))SND_FindRowCurve,
   (void*(*)(unsigned int))SND_FindRowPan,
-  (void*(*)(unsigned int))RETURN_ZERO32,
-  (void*(*)(unsigned int))RETURN_ZERO32,
+  BO1_FNCAST(void*(*)(unsigned int), RETURN_ZERO32),
+  BO1_FNCAST(void*(*)(unsigned int), RETURN_ZERO32),
   (void*(*)(unsigned int))SND_FindRowContext,
-  (void*(*)(unsigned int))RETURN_ZERO32,
+  BO1_FNCAST(void*(*)(unsigned int), RETURN_ZERO32),
   (void*(*)(unsigned int))SND_FindRowMaster
 };
 

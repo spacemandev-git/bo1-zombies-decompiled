@@ -31,6 +31,6 @@ void __cdecl IN_Shutdown();
 void __cdecl IN_Init();
 void __cdecl IN_Activate(int active);
 void __cdecl IN_Frame();
-void IN_GamepadsMove();
+// mod (gpad): IN_GamepadsMove moved to client/gpad_core.h
 void IN_MouseMove();
 void __cdecl IN_ClampMouseMove(tagPOINT *curPos);

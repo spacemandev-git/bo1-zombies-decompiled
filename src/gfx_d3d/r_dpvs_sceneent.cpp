@@ -3,6 +3,11 @@
 #include "r_dpvs_entity.h"
 #include "r_scene.h"
 
+// web: this file's own static copy of R_CullSphereDpvs (below) redeclares r_dpvs.h's: MSVC gives the redeclaration internal
+// linkage, clang keeps it external (a duplicate of r_dpvs.cpp's). A file-local name keeps MSVC's meaning everywhere.
+#define R_CullSphereDpvs R_CullSphereDpvs_SceneEnt
+static int __cdecl R_CullSphereDpvs(const float *origin, float radius, const DpvsPlane *planes, int planeCount);
+
 #if 0
 void    R_AddCellSceneEntSurfacesInFrustumCmd(GfxWorldDpvsPlanes *data)
 {

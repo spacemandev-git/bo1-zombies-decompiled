@@ -1709,10 +1709,21 @@ unsigned int __cdecl R_RenderDrawSurfListMaterial(const GfxDrawSurfListArgs *lis
                 R_SetupPass(prepassContext, 0);
                 passPrepassContext_4 = prepassContext.state;
             }
+#ifdef BO1_WEB
+            // web: the table entries take a GfxCmdBufContext by value, which the x86 call pushed as these two pointers;
+            // wasm passes that struct by reference, so calling with two pointers would trap (signature mismatch)
+            {
+                GfxCmdBufContext passContext;
+                passContext.source = passPrepassContext;
+                passContext.state = passPrepassContext_4;
+                subListCount = rb_tessTable[(drawSurf.packed >> 51) & 0xF](listArgs, passContext);
+            }
+#else
             subListCount = ((int (__cdecl *)(const GfxDrawSurfListArgs *, GfxCmdBufSourceState *, GfxCmdBufState *))rb_tessTable[(drawSurf.packed >> 51) & 0xF])(
                                              listArgs,
                                              passPrepassContext,
                                              passPrepassContext_4);
+#endif
         }
 
         if ( isPixelCostEnabled )
@@ -5789,7 +5800,7 @@ void __cdecl RB_UpdateDynamicBuffers(GfxBackEndData *backendData)
     *backendData->dynamicBufferCurrentFrame = 0;
 }
 
-const void *data;
+static const void *data; // web: file-local - r_water_sim.cpp has a global 'data' too (MSVC mangles the type in, Itanium does not)
 void     RB_RenderThread(unsigned int threadContext)
 {
     void *Value; // eax

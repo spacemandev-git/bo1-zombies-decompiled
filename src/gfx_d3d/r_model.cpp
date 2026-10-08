@@ -461,7 +461,7 @@ void __cdecl R_ShutdownModels()
 
 void __cdecl R_ReleaseAllModels()
 {
-    DB_EnumXAssets(ASSET_TYPE_XMODEL, (void (__cdecl *)(XAssetHeader, void *))R_ReleaseModel, 0, 1);
+    DB_EnumXAssets(ASSET_TYPE_XMODEL, BO1_FNCAST(void (__cdecl *)(XAssetHeader, void *), R_ReleaseModel), 0, 1);
 }
 
 void __cdecl R_ReleaseModel(XAssetHeader header)
@@ -473,7 +473,7 @@ void __cdecl R_ReleaseModel(XAssetHeader header)
 void __cdecl R_OptimizeAllModels()
 {
     if ( r_loadForRenderer->current.enabled )
-        DB_EnumXAssets(ASSET_TYPE_XMODEL, (void (__cdecl *)(XAssetHeader, void *))R_OptimizeModel, 0, 1);
+        DB_EnumXAssets(ASSET_TYPE_XMODEL, BO1_FNCAST(void (__cdecl *)(XAssetHeader, void *), R_OptimizeModel), 0, 1);
 }
 
 void __cdecl R_OptimizeModel(XAssetHeader header)

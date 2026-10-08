@@ -492,7 +492,9 @@ struct __declspec(align(16)) gjk_partition_t : gjk_base_t // sizeof=0x70
         virtual bool is_walkable(const phys_vec3 *hit_point, const phys_vec3 *up) override;
         // get_brush() - gjk_base_t
 };
+#ifdef _MSC_VER // MSVC class layout; Itanium-ABI compilers (clang/MinGW, Emscripten) lay this vtable class out differently
 static_assert(sizeof(gjk_partition_t) == 112);
+#endif
 
 struct gjk_double_sphere_t : gjk_base_t // sizeof=0x90
 {

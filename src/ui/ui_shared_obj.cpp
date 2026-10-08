@@ -3602,7 +3602,7 @@ void __cdecl Item_SetupKeywordHash()
 MenuList *__cdecl UI_LoadMenu(const char *menuFile, int imageTrack)
 {
     if ( useFastFile->current.enabled )
-        return (MenuList *)((int (__cdecl *)(const char *, int))UI_LoadMenus_FastFile)(menuFile, imageTrack);
+        return (MenuList *)BO1_FNCAST(int (__cdecl *)(const char *, int), UI_LoadMenus_FastFile)(menuFile, imageTrack);
     else
         return (MenuList *)((int (__cdecl *)(const char *, int))UI_LoadMenu_LoadObj)(menuFile, imageTrack);
 }
@@ -3835,7 +3835,7 @@ MenuList *__cdecl UI_LoadMenus(const char *menuFile, int imageTrack)
     if ( G_ExitAfterToolComplete() )
         return 0;
     if ( useFastFile->current.enabled )
-        return (MenuList *)((int (__cdecl *)(const char *, int))UI_LoadMenus_FastFile)(menuFile, imageTrack);
+        return (MenuList *)BO1_FNCAST(int (__cdecl *)(const char *, int), UI_LoadMenus_FastFile)(menuFile, imageTrack);
     return (MenuList *)((int (__cdecl *)(const char *, int))UI_LoadMenus_LoadObj)(menuFile, imageTrack);
 }
 

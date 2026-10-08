@@ -1051,7 +1051,7 @@ int __cdecl R_AddCellStaticSurfacesInFrustum(DpvsStaticCellCmd *dpvsCell)
     unsigned int bits; // [esp+10h] [ebp-15D4h]
     unsigned int k; // [esp+14h] [ebp-15D0h]
     int j; // [esp+18h] [ebp-15CCh]
-    float alignas(16) planebuf[320][4];
+    alignas(16) float planebuf[320][4]; // web: alignas first (MSVC also accepted it after the type)
     float (*occluderPlanes)[4]; // [esp+146Ch] [ebp-178h]
     const GfxCell *cell; // [esp+1470h] [ebp-174h]
     DpvsClipPlanes out; // [esp+1474h] [ebp-170h] BYREF

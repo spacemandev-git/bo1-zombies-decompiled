@@ -2663,12 +2663,13 @@ int __cdecl UI_SetActiveMenu(int localClientNum, uiMenuCommand_t menu)
                 if ( Dvar_GetBool("bo1_headless_client") )
                     Com_Printf(16, "bo1_menu: options %d stacked %d delta %d online %d systemlink %d\n",
                         options != nullptr, options ? Menus_MenuIsInStack(&uiInfo->uiDC, options) : 0,
-                        svs.clients[0].header.deltaMessage, Dvar_GetBool("onlinegame"), Dvar_GetBool("systemlink"));
+                        svs.clients[CG_GetClientNum(localClientNum)].header.deltaMessage, Dvar_GetBool("onlinegame"), Dvar_GetBool("systemlink"));
                 if ( !options )
                     return 0;
                 if ( Menus_MenuIsInStack(&uiInfo->uiDC, options) )
                     return 0;
-                if ( com_sv_running->current.enabled && svs.clients[0].header.deltaMessage == -1 )
+                // mod (coop): the host's own server slot, not slot 0 (the host can have any client number, bo1_slot)
+                if ( com_sv_running->current.enabled && svs.clients[CG_GetClientNum(localClientNum)].header.deltaMessage == -1 )
                     return 0;
                 // SP's secondary-local-client menu handoff has no work for KB's sole local client.
                 if ( !Dvar_GetBool("systemlink") && !Dvar_GetBool("onlinegame") )

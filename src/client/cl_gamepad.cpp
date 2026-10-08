@@ -10,7 +10,8 @@
 #include "cl_keys.h"
 #include <cgame_mp/cg_main_mp.h>
 #include <server_mp/sv_init_mp.h>
-#include <win32/win_gamepad.h>
+#include "gpad_core.h" // mod (gpad): was <win32/win_gamepad.h> (now a forwarder to it)
+#include <ui/ui_main.h>
 #include <devgui/devgui.h>
 #include <cgame_mp/cg_newDraw_mp.h>
 #include <ui/keycodes.h>
@@ -410,6 +411,14 @@ void __cdecl CL_GamepadEvent(int portIndex, unsigned int physicalAxis, int value
     maskd = maskc | (Key_IsDown(0, 19) != 0 ? 8 : 0);
     maske = maskd | (Key_IsDown(0, 20) != 0 ? 0x10 : 0);
     mask = maske | (Key_IsDown(0, 21) != 0 ? 0x20 : 0);
+    // mod (gpad): retail ran these coder combos for every player: releasing R3 + D-pad up toggled cg_wadefps,
+    // releasing L3 + R3 + D-pad up stepped sv_debugPacketContentsQuick. With the default layout (L3 sprint, R3 melee,
+    // D-pad up action slot 1) that happens in normal play, so they need developer 1 now.
+    if ( !com_developer || !com_developer->current.integer )
+    {
+        keyMask[0] = mask;
+        return;
+    }
     if ( keyMask[0] != 18 || mask == 18 )
     {
         if ( keyMask[0] == 19 && mask != 19 && sv_debugPacketContentsQuick )
@@ -452,13 +461,38 @@ void __cdecl CL_GamepadGenerateAPad(int localClientNum, int portIndex, unsigned 
     stick = stickForAxis[physicalAxis];
     if ( stick )
     {
+        // mod (gpad): the PC exe compiled out the event calls in both branches (console builds send the APAD keys
+        // from here; the right stick only with the lefty layouts). Restored for the left stick: up / down / left / right
+        // past gpad_stick_pressed send APAD_UP / APAD_DOWN / APAD_LEFT / APAD_RIGHT down and up, so menus (listboxes,
+        // sliders, Menu_HandleKey item navigation) work with the stick as with the D-pad.
+        unsigned int time = Sys_Milliseconds();
+        int posKey = 0;
+        int negKey = 0;
+        if ( stick == GPAD_LX )
+        {
+            posKey = K_APAD_RIGHT;
+            negKey = K_APAD_LEFT;
+        }
+        else if ( stick == GPAD_LY )
+        {
+            posKey = K_APAD_UP;
+            negKey = K_APAD_DOWN;
+        }
         if (GPad_IsStickPressed(portIndex, stick, GPAD_STICK_POS) || GPad_IsStickPressed(portIndex, stick, GPAD_STICK_NEG))
         {
             //BLOPS_NULLSUB();
+            if ( posKey && GPad_IsStickPressed(portIndex, stick, GPAD_STICK_POS) )
+                CL_GamepadButtonEventForPort(portIndex, posKey, 1, time, GPAD_NONE);
+            if ( negKey && GPad_IsStickPressed(portIndex, stick, GPAD_STICK_NEG) )
+                CL_GamepadButtonEventForPort(portIndex, negKey, 1, time, GPAD_NONE);
         }
         if ( GPad_IsStickReleased(portIndex, stick, GPAD_STICK_POS) || GPad_IsStickReleased(portIndex, stick, GPAD_STICK_NEG) )
         {
             //BLOPS_NULLSUB();
+            if ( posKey && GPad_IsStickReleased(portIndex, stick, GPAD_STICK_POS) )
+                CL_GamepadButtonEventForPort(portIndex, posKey, 0, time, GPAD_NONE);
+            if ( negKey && GPad_IsStickReleased(portIndex, stick, GPAD_STICK_NEG) )
+                CL_GamepadButtonEventForPort(portIndex, negKey, 0, time, GPAD_NONE);
         }
     }
 }
@@ -546,6 +580,40 @@ void __cdecl CL_GamepadResetMenuScrollTime(int localClientNum, int key, int down
     }
 }
 
+// mod (gpad): SP CL_KeyEvent turns keys into menu keys for a focused 3D menu (the front end's TV menus, UI_IsFocusedMenu3D;
+// keyboard side: CL_Key3DMenuTranslate in cl_keys.cpp: mouse 1 -> Enter, mouse 2 -> Escape, wheel / move keys -> arrows).
+// The pad path reached UI_KeyEvent untranslated, and Menu_HandleKey did not navigate with the D-pad, so the zombies main
+// menu could not be used with a pad. Same mapping for the pad: A / Start -> Enter, B / Back -> Escape, D-pad and left
+// stick (APAD) directions -> arrow keys. Other keys and 2D menus are unchanged.
+static int CL_Gamepad3DMenuTranslate(int localClientNum, int key)
+{
+    if ( !UI_IsFocusedMenu3D(localClientNum) )
+        return key;
+    switch ( key )
+    {
+    case K_BUTTON_A:
+    case K_BUTTON_START:
+        return 13;
+    case K_BUTTON_B:
+    case K_BUTTON_BACK:
+        return 27;
+    case K_DPAD_UP:
+    case K_APAD_UP:
+        return 154;
+    case K_DPAD_DOWN:
+    case K_APAD_DOWN:
+        return 155;
+    case K_DPAD_LEFT:
+    case K_APAD_LEFT:
+        return 156;
+    case K_DPAD_RIGHT:
+    case K_APAD_RIGHT:
+        return 157;
+    default:
+        return key;
+    }
+}
+
 void __cdecl CL_GamepadButtonEvent(
                 int localClientNum,
                 int controllerIndex,
@@ -610,10 +678,15 @@ void __cdecl CL_GamepadButtonEvent(
         kb = keys[key].binding;
         v14 = kb && !I_stricmp(kb, "devgui") && buttonEvent == 1 && keys[key].repeats == 1;
         v13 = keys[15].down && keys[14].down;
+        // mod (gpad): Back + Start opened the dev GUI for every player (and swallowed the press); developer 1 only now
+        if ( !com_developer || !com_developer->current.integer )
+            v13 = 0;
         devguiToggle = v13 || v14;
         if ( zombiemode->current.enabled )
         {
             v12 = keys[15].down && keys[14].down;
+            if ( !com_developer || !com_developer->current.integer ) // mod (gpad): as above
+                v12 = 0;
             devguiToggle = v12;
         }
         if ( devguiToggle )
@@ -700,7 +773,9 @@ void __cdecl CL_GamepadButtonEvent(
                     {
                         BG_UnlockablesClearAllItemsNew(controllerIndex);
                     }
-                    if ( keys[16].down && !keys[17].down )
+                    // mod (gpad): L3 + D-pad up / down / right ran screenshot.cfg / noclip / notarget for every player;
+                    // L3 is sprint in the default layout, so these coder shortcuts need developer 1 now
+                    if ( keys[16].down && !keys[17].down && com_developer && com_developer->current.integer )
                     {
                         if ( key == 20 )
                         {
@@ -786,7 +861,9 @@ void __cdecl CL_GamepadButtonEvent(
                                     else if ( cls.uiStarted && !i )
                                     {
                                         //BLOPS_NULLSUB();
-                                        UI_KeyEvent(localClientNum, key, v15);
+                                        // mod (gpad): the front end's 3D TV menus take the keyboard's menu keys
+                                        // (CL_Key3DMenuTranslate, cl_keys.cpp); translate the pad keys the same way
+                                        UI_KeyEvent(localClientNum, CL_Gamepad3DMenuTranslate(localClientNum, key), v15);
                                     }
                                 }
                                 else
@@ -915,3 +992,135 @@ void __cdecl CL_GamepadButtonEventForPort(
     CL_GamepadButtonEvent(localClientNum, portIndex, key, buttonEvent, time, button);
 }
 
+
+// mod (gpad): menu auto-repeat for a held D-pad / left-stick direction. CL_CheckForIgnoreDueToRepeat expects the key to
+// be sent "down" again while it is held (repeat 1 starts the gpad_menu_scroll_delay_first wait, later repeats pass once
+// gpad_menu_scroll_delay_rest has gone by), but the pad poll only sends edges, so a held direction moved one item. Called
+// once per input frame from IN_GamepadsMove (gpad_core.cpp) while a menu has the keys: when nextScrollTime has passed,
+// the first held scroll key (menuScrollButtonList) is sent down again directly to CL_GamepadButtonEvent, which counts the
+// repeat and pushes nextScrollTime on (CL_GamepadButtonEventForPort would reset it to the first-repeat delay).
+void __cdecl CL_GamepadRepeatScrollingButtons(int localClientNum, int controllerIndex)
+{
+    clientUIActive_t *LocalClientUIGlobals;
+    KeyState *keys;
+    GamePadButton button;
+    int buttonIndex;
+    int key;
+    int time;
+
+    LocalClientUIGlobals = CL_GetLocalClientUIGlobals(localClientNum);
+    if ( (LocalClientUIGlobals->keyCatchers & 0x10) == 0 )
+        return;
+    // the held scoreboard passes pad keys on to their game binds (CL_GamepadButtonEvent): repeating there would re-run
+    // e.g. "+actionslot 2" for a D-pad held while Back is down
+    if ( UI_GetActiveMenu(localClientNum) == UIMENU_SCOREBOARD )
+        return;
+    time = Sys_Milliseconds();
+    if ( time <= LocalClientUIGlobals->nextScrollTime )
+        return;
+    keys = playerKeys[localClientNum].keys;
+    for ( buttonIndex = 0; buttonIndex < 8; ++buttonIndex )
+    {
+        key = menuScrollButtonList[buttonIndex];
+        if ( !keys[key].down || keys[key].repeats < 1 )
+            continue;
+        switch ( key )
+        {
+        case K_DPAD_UP:
+            button = GPAD_UP;
+            break;
+        case K_DPAD_DOWN:
+            button = GPAD_DOWN;
+            break;
+        case K_DPAD_LEFT:
+            button = GPAD_LEFT;
+            break;
+        case K_DPAD_RIGHT:
+            button = GPAD_RIGHT;
+            break;
+        default:
+            button = GPAD_NONE; // APAD (left stick) keys have no pad button
+            break;
+        }
+        CL_GamepadButtonEvent(localClientNum, controllerIndex, key, 1, time, button);
+        return;
+    }
+}
+
+// mod (gpad): built-in pad layout, the BO1 console "Default" preset. Retail PC took pad binds only from
+// buttons_default.cfg / thumbstick_default.cfg in the fastfiles, executed by the gamer profile when gpad_enabled was
+// set (GamerProfile_ExecControllerBindings), and left every stick axis unbound (CL_InitGamepadAxisBindings), so a pad
+// did nothing until bound by hand. These binds are applied after the startup configs (Com_ExecStartupConfigs) only
+// when the player's config holds no pad bind at all (buttons and axes are checked separately), so rebinds survive: the
+// config writer saves pad binds like key binds ("bind BUTTON_A ...", "bindaxis A_LSTICK_X VA_SIDE MAP_SQUARED").
+static const char *const s_gpadDefaultButtonBinds[][2] =
+{
+    { "BUTTON_A", "+gostand" },         // jump / stand up
+    { "BUTTON_B", "+stance" },          // tap crouch, hold prone (cl_stanceHoldTime)
+    { "BUTTON_X", "+usereload" },       // tap reload, hold use (buy, revive, open doors)
+    { "BUTTON_Y", "weapnext" },         // switch weapon
+    { "BUTTON_LSHLDR", "+smoke" },      // tactical (monkey bomb, gersch device, ...)
+    { "BUTTON_RSHLDR", "+frag" },       // lethal grenade
+    { "BUTTON_LTRIG", "+speed_throw" }, // aim down sight while held
+    { "BUTTON_RTRIG", "+attack" },      // fire
+    { "BUTTON_LSTICK", "+breath_sprint" }, // sprint / hold breath
+    { "BUTTON_RSTICK", "+melee" },      // knife
+    { "BUTTON_START", "togglemenu" },   // pause menu (as Escape)
+    { "BUTTON_BACK", "+scores" },       // scoreboard while held
+    { "DPAD_UP", "+actionslot 1" },
+    { "DPAD_DOWN", "+actionslot 2" },
+    { "DPAD_LEFT", "+actionslot 3" },
+    { "DPAD_RIGHT", "+actionslot 4" },  // placeable equipment (claymores, ...)
+};
+
+void __cdecl CL_GamepadDefaultBinds(int localClientNum)
+{
+    KeyState *keys;
+    bool haveButtons;
+    bool haveAxes;
+    unsigned int i;
+    int key;
+
+    if ( localClientNum < 0 || localClientNum >= 1 )
+        return;
+    keys = playerKeys[localClientNum].keys;
+    haveButtons = false;
+    for ( key = 1; key < 32; ++key )
+    {
+        if ( Key_IsValidGamePadChar((char)key )
+            && (keys[key].binding && *keys[key].binding || keys[key].binding2 && *keys[key].binding2) )
+        {
+            haveButtons = true;
+            break;
+        }
+    }
+    haveAxes = false;
+    for ( i = 0; i < GPAD_VIRTAXIS_COUNT; ++i )
+    {
+        if ( gaGlobs[localClientNum].virtualAxes[i].physicalAxis != GPAD_PHYSAXIS_NONE )
+        {
+            haveAxes = true;
+            break;
+        }
+    }
+    if ( !haveButtons )
+    {
+        for ( i = 0; i < sizeof(s_gpadDefaultButtonBinds) / sizeof(s_gpadDefaultButtonBinds[0]); ++i )
+        {
+            key = Key_StringToKeynum(s_gpadDefaultButtonBinds[i][0]);
+            if ( key > 0 )
+                Key_SetBinding(localClientNum, key, s_gpadDefaultButtonBinds[i][1], 0);
+        }
+        Com_Printf(14, "Game pad: no pad button binds in the config, default layout bound.\n");
+    }
+    if ( !haveAxes )
+    {
+        // MAP_SQUARED is the bindaxis default (Axis_Bind_f): the deflection is scaled by the stick's length, finer near
+        // the centre. "bindaxis A_LSTICK_Y VA_FORWARD MAP_LINEAR" etc. changes it.
+        Gamepad_BindAxis(&gaGlobs[localClientNum], GPAD_PHYSAXIS_LSTICK_X, GPAD_VIRTAXIS_SIDE, GPAD_MAP_SQUARED);
+        Gamepad_BindAxis(&gaGlobs[localClientNum], GPAD_PHYSAXIS_LSTICK_Y, GPAD_VIRTAXIS_FORWARD, GPAD_MAP_SQUARED);
+        Gamepad_BindAxis(&gaGlobs[localClientNum], GPAD_PHYSAXIS_RSTICK_X, GPAD_VIRTAXIS_YAW, GPAD_MAP_SQUARED);
+        Gamepad_BindAxis(&gaGlobs[localClientNum], GPAD_PHYSAXIS_RSTICK_Y, GPAD_VIRTAXIS_PITCH, GPAD_MAP_SQUARED);
+        Com_Printf(14, "Game pad: no stick binds in the config, default sticks bound (left move, right look).\n");
+    }
+}

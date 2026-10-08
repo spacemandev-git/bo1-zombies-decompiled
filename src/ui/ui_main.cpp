@@ -125,7 +125,7 @@ const dvar_t *emblem_scroll_delay_first;
 const dvar_t *emblem_scroll_delay_rest;
 
 uiInfo_s uiInfoArray[1];
-const serverFilter_s serverFilters[1];
+const serverFilter_s serverFilters[1] = {}; // web: a const object needs an initializer outside MSVC (zero, as before)
 
 bool g_ingameMenusLoaded[1];
 

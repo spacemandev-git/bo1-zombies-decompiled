@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>d3d9 smoke (running)</title>
+<style>
+  body { background: #111; color: #ddd; font: 13px/1.4 ui-monospace, Menlo, monospace; margin: 16px; }
+  canvas { border: 1px solid #444; image-rendering: pixelated; width: 256px; height: 256px; }
+  .pass { color: #6c6; } .fail { color: #f66; font-weight: bold; } .other { color: #aaa; }
+  pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h3>BO1 web: Direct3D 9 &rarr; WebGL2 shim smoke test</h3>
+<canvas id="canvas" width="256" height="256" oncontextmenu="event.preventDefault()"></canvas>
+<pre id="log"></pre>
+<script>
+  var logEl = document.getElementById('log');
+  function addLine(text) {
+    var m = /^D3D9 SMOKE TEST (PASSED|FAILED): (\d+) passed, (\d+) failed/.exec(text);
+    if (m) {
+      window.D3D9_SMOKE = { pass: +m[2], fail: +m[3], done: true };
+      document.title = (m[1] === 'PASSED' ? 'PASS ' : 'FAIL ') + m[2] + '/' + (+m[2] + +m[3]) + ' d3d9 smoke';
+    }
+    var span = document.createElement('span');
+    span.className = /^PASS/.test(text) ? 'pass' : (/^FAIL|FAILED/.test(text) ? 'fail' : 'other');
+    span.textContent = text + '\n';
+    logEl.appendChild(span);
+    console.log(text);
+  }
+  var Module = {
+    canvas: document.getElementById('canvas'),
+    print: addLine,
+    printErr: function (t) { addLine(t); },
+  };
+  window.onerror = function (msg) { addLine('FAIL uncaught: ' + msg); window.D3D9_SMOKE = { pass: 0, fail: 1, done: true }; };
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

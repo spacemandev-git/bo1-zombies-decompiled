@@ -4771,11 +4771,15 @@ void    Menu_HandleKey(int localClientNum, UiContext *dc, menuDef_t *menu, int k
                             case 154:
                             case 183:
                             case 206:
+                            case 20: // mod (gpad): K_DPAD_UP / K_APAD_UP (left stick). Retail PC moved the focus only
+                            case 28: // with the arrows, keypad and wheel, so a pad could not leave the first item.
                                 Menu_SetPrevCursorItem(localClientNum, dc, menu, 1);
                                 break;
                             case 155:
                             case 189:
                             case 205:
+                            case 21: // mod (gpad): K_DPAD_DOWN / K_APAD_DOWN
+                            case 29:
                                 Menu_SetNextCursorItem(localClientNum, dc, menu, 0, 1);
                                 break;
                             case 177:

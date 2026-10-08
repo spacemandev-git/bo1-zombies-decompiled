@@ -1,0 +1,19 @@
+# Build context for web/Dockerfile (context = repository root).
+# The engine stage (BUILD_ENGINE=1) compiles from src/, tl/, DemonWare/, cmake/, CMakeLists.txt, cmake_files.cmake
+# and CMakePresets.json, so none of those may be excluded here.
+
+.git
+**/node_modules
+**/.DS_Store
+**/*.log
+
+# local build outputs (rebuilt inside the image)
+build
+build-*
+out
+web/dist
+web/engine
+
+# not used by any stage
+images
+.claude

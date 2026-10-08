@@ -1,0 +1,9 @@
+{
+  "name": "spacemandev-games-railway",
+  "private": true,
+  "type": "module",
+  "description": "Railway infrastructure as code (railway.ts) for spacemandev.games; see web/README.md.",
+  "devDependencies": {
+    "railway": "^3.13.0"
+  }
+}

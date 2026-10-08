@@ -3613,13 +3613,13 @@ XAnim_s *__cdecl CG_GetAnimations(int localClientNum, int entIndex, int entType)
             return 0;
         if ( com_sv_running->current.enabled )
             return Scr_GetAnims(cent->nextState.animtreeIndex, SCRIPTINSTANCE_SERVER);
-        return Scr_GetClientAnims(cent->nextState.animtreeIndex, SCRIPTINSTANCE_SERVER);
+        return CG_SP_GetRemoteAnims(cent->nextState.animtreeIndex); // mod (coop): the host's list (cg_main_mp.cpp)
     }
     else if ( entType == 17 || entType == 19 )
     {
         // zombies: actors are SP zombies; same tree as CG_LoadAnimTreeInstances (MEASURED choice, see there)
         if ( zombiemode && zombiemode->current.enabled )
-            return G_SP_GetActorAnims();
+            return CG_SP_GetActorAnims(); // mod (coop): own tree on a client without a local server
         return Dog_GetAnims();
     }
     else

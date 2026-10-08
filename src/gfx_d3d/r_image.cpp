@@ -938,7 +938,7 @@ GfxImage *__cdecl Image_FindExisting_FastFile(const char *name)
 GfxImage *__cdecl Image_Register(char *imageName, unsigned __int8 semantic, int imageTrack)
 {
     if ( useFastFile->current.enabled )
-        return (GfxImage *)((int (__cdecl *)(char *, unsigned int, int))Image_Register_FastFile)(imageName, semantic, imageTrack);
+        return (GfxImage *)BO1_FNCAST(int (__cdecl *)(char *, unsigned int, int), Image_Register_FastFile)(imageName, semantic, imageTrack);
     else
         return Image_Register_LoadObj(imageName, semantic, imageTrack);
 }
@@ -966,7 +966,7 @@ GfxImage *__cdecl Image_Register_FastFile(const char *imageName)
 
 void __cdecl R_ReleaseLostImages()
 {
-    DB_EnumXAssets(ASSET_TYPE_IMAGE, (void (__cdecl *)(XAssetHeader, void *))R_FreeLostImage, 0, 1);
+    DB_EnumXAssets(ASSET_TYPE_IMAGE, BO1_FNCAST(void (__cdecl *)(XAssetHeader, void *), R_FreeLostImage), 0, 1);
 }
 
 void __cdecl R_FreeLostImage(XAssetHeader header)
@@ -992,7 +992,7 @@ void __cdecl R_FreeLostImage(XAssetHeader header)
 
 void __cdecl R_ReloadLostImages()
 {
-    DB_EnumXAssets(ASSET_TYPE_IMAGE, (void (__cdecl *)(XAssetHeader, void *))R_RebuildLostImage, 0, 1);
+    DB_EnumXAssets(ASSET_TYPE_IMAGE, BO1_FNCAST(void (__cdecl *)(XAssetHeader, void *), R_RebuildLostImage), 0, 1);
 }
 
 void __cdecl R_RebuildLostImage(XAssetHeader header)

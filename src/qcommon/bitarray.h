@@ -15,7 +15,7 @@ struct bitarray // sizeof=0x10
     {
         unsigned int v2; // kr00_4
         int i; // [esp+0h] [ebp-Ch]
-        char *argList; // [esp+8h] [ebp-4h]
+        va_list argList; // [esp+8h] [ebp-4h] (web: was char *, MSVC's va_list type; clang's va_list is not char *)
         va_list va; // [esp+1Ch] [ebp+10h] BYREF
 
         va_start(va, first);

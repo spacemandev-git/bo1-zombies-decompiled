@@ -14,7 +14,8 @@ struct bdDownloadInterceptor // sizeof=0x4
         //bdDownloadInterceptor_vtbl *__vftable;
                                                                                 // XREF: LiveStorage_FileShare_ReadFile(int,fileShareReadFileInfo *)+29/w
         virtual ~bdDownloadInterceptor() = default;
-        virtual unsigned int handleDownload(void *, unsigned int);
+        // web: inline (never called: fileShareDownloadInterceptor overrides it), see broad_phase_terrain_query_callback::query
+        virtual unsigned int handleDownload(void *, unsigned int) { return 0; }
 };
 
 struct bdTaskResult // sizeof=0x4

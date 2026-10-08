@@ -298,7 +298,7 @@ void __thiscall UIViewer::Show()
                     BG_LoadPlayerAnimTypes();
                     BG_InitWeaponStrings();
                     this->bgs.AllocXAnim = (void *(__cdecl *)(unsigned int))Hunk_AllocXAnimPrecache;
-                    this->bgs.GetDObj = (DObj *(__cdecl *)(unsigned int, int))UIViewer::GetDObj;
+                    this->bgs.GetDObj = BO1_FNCAST(DObj *(__cdecl *)(unsigned int, int), UIViewer::GetDObj);
                     this->bgs.Rand = CG_rand;
                     this->bgs.animData = &this->bgsAnim;
                     memset((unsigned __int8 *)this->bgs.animData, 0, 0x8D388u);
@@ -1930,7 +1930,7 @@ void __thiscall UIViewer::SetupStreamer()
         R_StreamSetUIConfig(1);
         rowCount = StringTable_RowCount(this->bodyHeadTable);
         colCount = StringTable_ColumnCount(this->bodyHeadTable);
-        DB_EnumXAssets(ASSET_TYPE_WEAPON, (void (__cdecl *)(XAssetHeader, void *))ForceLoadWeapon, 0, 0);
+        DB_EnumXAssets(ASSET_TYPE_WEAPON, BO1_FNCAST(void (__cdecl *)(XAssetHeader, void *), ForceLoadWeapon), 0, 0);
         for ( row = 0; row < rowCount; ++row )
         {
             partType = StringTable_GetColumnValueForRow(this->bodyHeadTable, row, 1);

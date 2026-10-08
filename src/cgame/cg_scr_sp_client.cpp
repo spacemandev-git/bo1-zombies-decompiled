@@ -480,7 +480,8 @@ static void __cdecl CScr_FireWeapon(scr_entref_t entref)
         if (numParams == 3)
         {
             int clientNum = Scr_GetInt(2, SCRIPTINSTANCE_CLIENT);
-            if (clientNum < 0 || clientNum > 4)
+            // mod (coop): retail SP had four client slots (0..4 accepted); co-op clients go up to sv_maxclients
+            if (clientNum < 0 || clientNum >= com_maxclients->current.integer)
             {
                 Scr_Error(SCRIPTINSTANCE_CLIENT, "Out-of-range client number specified for param 3 of 'FireWeapon'.", 0);
                 return;

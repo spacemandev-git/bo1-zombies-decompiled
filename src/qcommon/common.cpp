@@ -1651,6 +1651,13 @@ void __cdecl Com_ExecStartupConfigs(int localClientNum, const char *configFile)
         Cbuf_AddText(localClientNum, "exec safemode_mp.cfg\n");
 
     Cbuf_Execute(localClientNum, Com_LocalClient_GetControllerIndex(localClientNum));
+
+#ifndef BO1_DEDICATED
+    // mod (gpad): the built-in pad layout (CL_GamepadDefaultBinds, client/cl_gamepad.cpp), bound only when the configs
+    // just executed left every pad button / stick unbound, so the player's own pad binds survive. docs/controllers.md
+    if (!IsDedicatedServer())
+        CL_GamepadDefaultBinds(localClientNum);
+#endif
 }
 
 void __cdecl Com_InitUI3DCallback()

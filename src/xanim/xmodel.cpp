@@ -74,7 +74,7 @@ void __cdecl XModelSurfsSetData(const char *name, XModelSurfs *modelSurfs, void 
 XModel *__cdecl XModelPrecache(char *name, void *(__cdecl *Alloc)(int), void *(__cdecl *AllocColl)(int))
 {
     if ( useFastFile->current.enabled )
-        return (XModel *)((int (__cdecl *)(char *, void *(__cdecl *)(int), void *(__cdecl *)(int)))XModelPrecache_FastFile)(
+        return (XModel *)BO1_FNCAST(int (__cdecl *)(char *, void *(__cdecl *)(int), void *(__cdecl *)(int)), XModelPrecache_FastFile)(
                                              name,
                                              Alloc,
                                              AllocColl);

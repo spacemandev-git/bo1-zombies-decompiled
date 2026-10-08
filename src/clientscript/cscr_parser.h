@@ -186,6 +186,7 @@ void __cdecl RuntimeErrorInternal(
                 unsigned int index,
                 const char *msg);
 void __cdecl Scr_SetLoadedImpureScript(bool loadedImpureScript);
+void Scr_RegisterDumpCommands(); // mod (coop): bo1_dumpscript / bo1_dumpscripts (dev aid, SV_Init)
 
 
 extern scrParserPub_t gScrParserPub[2];

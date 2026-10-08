@@ -1,0 +1,94 @@
+<!doctype html>
+<!--
+  BO1 web engine test harness (not the real page: that is web/). Generated into build/web/harness.html by cmake/web.cmake.
+  Serve the repository with COOP/COEP headers and open it:
+      python3 src/web/tools/serve.py            # http://localhost:8642/build/web/harness.html
+  1. "Import game folder": pick a Black Ops install folder (the one with zone/, main/, localization.txt); its files are
+     copied into OPFS bo1/game/ (docs/web-engine-interface.md section 2). Only needed once per browser profile.
+  2. "Start": runs web/engine/bo1.js with the command line below.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<title>BO1 web engine harness</title>
+<style>
+  body { background: #111; color: #ddd; font: 13px monospace; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+  #bar { padding: 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #args { flex: 1; min-width: 400px; background: #222; color: #ddd; border: 1px solid #444; padding: 4px; }
+  #main { flex: 1; display: flex; min-height: 0; }
+  #canvas { background: #000; width: 960px; height: 540px; outline: none; }
+  #log { flex: 1; overflow: auto; white-space: pre-wrap; padding: 6px; border-left: 1px solid #333; }
+  .err { color: #f88; }
+  button, label { background: #333; color: #ddd; border: 1px solid #555; padding: 4px 8px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <label>Import game folder <input id="dir" type="file" webkitdirectory hidden></label>
+  <button id="start">Start</button>
+  <input id="args" value="+set fs_b /opfs/bo1/game +set fs_h /opfs/bo1/home +set r_fullscreen 0">
+  <span id="status"></span>
+</div>
+<div id="main">
+  <canvas id="canvas" tabindex="0" width="960" height="540"></canvas>
+  <div id="log"></div>
+</div>
+<script type="module">
+const log = document.getElementById('log');
+const status = document.getElementById('status');
+function line(text, cls) {
+  const d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.textContent = text;
+  log.appendChild(d);
+  if (log.childNodes.length > 5000) log.removeChild(log.firstChild);
+  log.scrollTop = log.scrollHeight;
+}
+if (!crossOriginIsolated) line('crossOriginIsolated is false: serve with COOP/COEP (src/web/tools/serve.py)', 'err');
+
+async function dirHandle(root, parts) {
+  let d = root;
+  for (const p of parts) d = await d.getDirectoryHandle(p, { create: true });
+  return d;
+}
+
+document.getElementById('dir').addEventListener('change', async (ev) => {
+  const files = [...ev.target.files];
+  const root = await navigator.storage.getDirectory();
+  const game = await dirHandle(root, ['bo1', 'game']);
+  let done = 0, bytes = 0;
+  for (const f of files) {
+    const rel = f.webkitRelativePath.split('/').slice(1);   // drop the picked folder's own name
+    const dir = await dirHandle(game, rel.slice(0, -1));
+    const fh = await dir.getFileHandle(rel[rel.length - 1], { create: true });
+    const w = await fh.createWritable();
+    await w.write(f);
+    await w.close();
+    bytes += f.size;
+    status.textContent = `imported ${++done}/${files.length} (${(bytes / 1048576).toFixed(0)} MB)`;
+  }
+  line(`imported ${done} files into OPFS bo1/game`);
+});
+
+document.getElementById('start').addEventListener('click', async () => {
+  document.getElementById('start').disabled = true;
+  const base = new URL('../../web/engine/', import.meta.url).href;
+  const { default: createBo1 } = await import(base + 'bo1.js');
+  const args = document.getElementById('args').value.split(/\s(?=\+)/).map((s) => s.trim()).filter(Boolean);
+  line('starting: ' + args.join(' '));
+  const canvas = document.getElementById('canvas');
+  canvas.focus();
+  await createBo1({
+    canvas,
+    arguments: args,
+    locateFile: (f) => base + f,
+    print: (t) => line(t),
+    printErr: (t) => line(t, 'err'),
+    onEngineError: (m) => { line('ENGINE ERROR: ' + m, 'err'); status.textContent = 'error'; },
+    onEngineExit: (c) => { line('engine exited: ' + c); status.textContent = 'exited ' + c; },
+  });
+  status.textContent = 'running';
+});
+</script>
+</body>
+</html>

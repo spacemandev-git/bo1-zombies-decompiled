@@ -15,6 +15,9 @@
 #include "cscr_stringlist.h"
 #include "cscr_instance.h"
 #include "cscr_vm.h"
+#include <qcommon/cmd.h> // mod (coop): bo1_dumpscript
+#include <database/db_registry.h> // mod (coop): bo1_dumpscript
+#include <vector> // mod (coop): bo1_dumpscript
 
 scrParserPub_t gScrParserPub[2];
 scrParserGlob_t gScrParserGlob[2];
@@ -2102,3 +2105,121 @@ void __cdecl Scr_SetLoadedImpureScript(bool loadedImpureScript)
     g_loadedImpureScript = loadedImpureScript;
 }
 
+
+// mod (coop): dev aid for the co-op mod (mods/coop/README.md): the retail map scripts are in the fastfiles, not in the
+// repo. bo1_dumpscript <name> writes one rawfile asset of the loaded zones to <fs_homepath>/dump/<name> as source text,
+// read the way Scr_ReadFile_FastFile reads it (.gsc / .csc: [uncompressed size][compressed size][zlib data]; any other
+// rawfile is plain text). bo1_dumpscripts writes every rawfile asset loaded now. Load the map first (e.g. a solo game of
+// Kino), then: bo1_dumpscript maps/zombie_theater.gsc
+static bool Scr_DumpRawFile(const RawFile *rawfile)
+{
+    const char *name = rawfile ? rawfile->name : nullptr;
+    if ( !name || !*name || !rawfile->buffer )
+        return false;
+    if ( strstr(name, "..") || name[0] == '/' || name[0] == '\\' || strchr(name, ':') )
+    {
+        Com_PrintWarning(0, "bo1_dumpscript: %s: not a relative path, skipped\n", name);
+        return false;
+    }
+    const char *extension = Com_GetExtensionSubString(name);
+    std::vector<char> source;
+    const char *data = rawfile->buffer;
+    unsigned int len;
+    if ( !I_stricmp(extension, ".gsc") || !I_stricmp(extension, ".csc") )
+    {
+        uLongf outlen = *(const unsigned int *)rawfile->buffer;
+        const unsigned int inlen = *((const unsigned int *)rawfile->buffer + 1);
+        if ( outlen > 0x4000000 || inlen > 0x4000000 )
+        {
+            Com_PrintWarning(0, "bo1_dumpscript: %s: bad sizes %u / %u, skipped\n", name, (unsigned int)outlen, inlen);
+            return false;
+        }
+        source.resize(outlen + 1);
+        if ( uncompress((unsigned __int8 *)source.data(), &outlen, (const unsigned __int8 *)rawfile->buffer + 8, inlen) != Z_OK )
+        {
+            Com_PrintWarning(0, "bo1_dumpscript: %s: does not decompress, skipped\n", name);
+            return false;
+        }
+        data = source.data();
+        len = (unsigned int)outlen;
+    }
+    else
+    {
+        len = (unsigned int)strlen(rawfile->buffer);
+    }
+    const int f = FS_FOpenFileWriteToDir((char *)name, (char *)"dump", "");
+    if ( !f )
+    {
+        Com_PrintWarning(0, "bo1_dumpscript: cannot write %s/dump/%s\n", fs_homepath->current.string, name);
+        return false;
+    }
+    FS_Write(data, len, f);
+    FS_FCloseFile(f);
+    Com_Printf(0, "bo1_dumpscript: wrote %s/dump/%s (%u bytes)\n", fs_homepath->current.string, name, len);
+    return true;
+}
+
+struct ScrDumpList
+{
+    const char *match; // one name (case-insensitive), or null for all
+    std::vector<const RawFile *> found;
+};
+
+static void Scr_DumpCollect(XAssetHeader header, void *data)
+{
+    ScrDumpList *list = (ScrDumpList *)data;
+    if ( header.rawfile && header.rawfile->name && (!list->match || !I_stricmp(header.rawfile->name, list->match)) )
+        list->found.push_back(header.rawfile);
+}
+
+static void Scr_DumpScript_f()
+{
+    if ( Cmd_Argc() != 2 )
+    {
+        Com_Printf(0, "usage: bo1_dumpscript <rawfile name, e.g. maps/zombie_theater.gsc>\n");
+        return;
+    }
+    char name[256];
+    I_strncpyz(name, Cmd_Argv(1), sizeof(name));
+    for ( char *c = name; *c; ++c )
+        if ( *c == '\\' )
+            *c = '/';
+    ScrDumpList list;
+    list.match = name;
+    DB_EnumXAssets_FastFile(ASSET_TYPE_RAWFILE, Scr_DumpCollect, &list, false);
+    if ( list.found.empty() && !*Com_GetExtensionSubString(name) )
+    {
+        I_strncat(name, sizeof(name), ".gsc"); // "maps/zombie_theater" means the .gsc
+        DB_EnumXAssets_FastFile(ASSET_TYPE_RAWFILE, Scr_DumpCollect, &list, false);
+    }
+    if ( list.found.empty() )
+    {
+        Com_Printf(0, "bo1_dumpscript: no rawfile %s in the loaded fastfiles (load the map that has it first)\n", name);
+        return;
+    }
+    Scr_DumpRawFile(list.found[0]);
+}
+
+static void Scr_DumpScripts_f()
+{
+    ScrDumpList list;
+    list.match = nullptr;
+    DB_EnumXAssets_FastFile(ASSET_TYPE_RAWFILE, Scr_DumpCollect, &list, false);
+    int written = 0;
+    for ( const RawFile *rawfile : list.found )
+        written += Scr_DumpRawFile(rawfile) ? 1 : 0;
+    Com_Printf(0, "bo1_dumpscripts: %d of %d rawfiles written to %s/dump/\n", written, (int)list.found.size(), fs_homepath->current.string);
+}
+
+static cmd_function_s Scr_DumpScript_f_VAR;
+static cmd_function_s Scr_DumpScripts_f_VAR;
+
+void Scr_RegisterDumpCommands()
+{
+    static bool registered;
+    if ( registered )
+        return;
+    registered = true;
+    Cmd_AddCommandInternal("bo1_dumpscript", Scr_DumpScript_f, &Scr_DumpScript_f_VAR);
+    Cmd_AddCommandInternal("bo1_dumpscripts", Scr_DumpScripts_f, &Scr_DumpScripts_f_VAR);
+}

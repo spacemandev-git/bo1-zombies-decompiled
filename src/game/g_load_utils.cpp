@@ -139,13 +139,13 @@ unsigned int __cdecl G_NewString(const char *string)
 }
 
 char str[8][32];
-int index;
+int s_vtosIndex; // web: was 'index', which POSIX index() (<strings.h>) also names outside MSVC
 char *__cdecl vtos(const float *v)
 {
     char *s; // [esp+0h] [ebp-4h]
 
-    s = str[index];
-    index = ((_BYTE)index + 1) & 7;
+    s = str[s_vtosIndex];
+    s_vtosIndex = ((_BYTE)s_vtosIndex + 1) & 7;
     Com_sprintf(s, 0x20u, "(%i %i %i)", (int)*v, (int)v[1], (int)v[2]);
     return s;
 }

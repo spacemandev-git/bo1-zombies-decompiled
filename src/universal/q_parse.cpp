@@ -239,7 +239,7 @@ const char *__cdecl Com_GetScriptWarningPrefix()
 void Com_ScriptErrorDrop(const char *msg, ...)
 {
     char string[4096]; // [esp+0h] [ebp-1010h] BYREF
-    char *ap; // [esp+1004h] [ebp-Ch]
+    va_list ap; // [esp+1004h] [ebp-Ch] (web: was char *, MSVC's va_list type)
     parseInfo_t *v3; // [esp+1008h] [ebp-8h]
     ParseThreadInfo *ParseThreadInfo; // [esp+100Ch] [ebp-4h]
     va_list va; // [esp+101Ch] [ebp+Ch] BYREF
@@ -259,7 +259,7 @@ void Com_ScriptErrorDrop(const char *msg, ...)
 void Com_ScriptError(const char *msg, ...)
 {
     char string[4096]; // [esp+0h] [ebp-1010h] BYREF
-    char *ap; // [esp+1004h] [ebp-Ch]
+    va_list ap; // [esp+1004h] [ebp-Ch] (web: was char *, MSVC's va_list type)
     parseInfo_t *v3; // [esp+1008h] [ebp-8h]
     ParseThreadInfo *ParseThreadInfo; // [esp+100Ch] [ebp-4h]
     va_list va; // [esp+101Ch] [ebp+Ch] BYREF
@@ -279,7 +279,7 @@ void Com_ScriptError(const char *msg, ...)
 void Com_ScriptWarning(const char *msg, ...)
 {
     char string[4096]; // [esp+0h] [ebp-1010h] BYREF
-    char *ap; // [esp+1004h] [ebp-Ch]
+    va_list ap; // [esp+1004h] [ebp-Ch] (web: was char *, MSVC's va_list type)
     parseInfo_t *v3; // [esp+1008h] [ebp-8h]
     ParseThreadInfo *ParseThreadInfo; // [esp+100Ch] [ebp-4h]
     va_list va; // [esp+101Ch] [ebp+Ch] BYREF

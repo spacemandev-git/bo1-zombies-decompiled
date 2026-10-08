@@ -96,6 +96,33 @@ static int CG_ScoreBarColumnValue(int clientNum, int score)
     return score;
 }
 
+// mod (coop): the character (0-3) a client number plays, for its score bar and colours. SP zombies has client numbers
+// 0-3, each the character of its number; a co-op lobby can put duplicate characters on 4-7. bo1_lobby_chars is the
+// host's list ("0 1 - 3 2 0", '-' = unused number), which remote clients get with the gamestate (systeminfo). A number
+// it does not give a character keeps its own (0-3: retail; 4-7: the number mod 4).
+static int CG_SP_CoopCharacter(int clientNum)
+{
+    const char *s = Dvar_GetString("bo1_lobby_chars");
+
+    for ( int i = 0; *s; ++i )
+    {
+        while ( *s == ' ' )
+            ++s;
+        if ( !*s )
+            break;
+        const char *token = s;
+        while ( *s && *s != ' ' )
+            ++s;
+        if ( i == clientNum )
+        {
+            if ( s - token == 1 && token[0] >= '0' && token[0] <= '3' )
+                return token[0] - '0';
+            break;
+        }
+    }
+    return clientNum >= 0 && clientNum < 4 ? clientNum : clientNum & 3;
+}
+
 // CG_ScoreBarZombieColor (SP 0x00890c80; name in EAX, clientNum in ECX, the colour out in ESI)
 static void CG_ScoreBarZombieColor(const char *dvarName, int clientNum, float *color)
 {
@@ -106,6 +133,7 @@ static void CG_ScoreBarZombieColor(const char *dvarName, int clientNum, float *c
         Dvar_GetUnpackedColor(cg_ScoresColor_Player, color);
         return;
     }
+    clientNum = CG_SP_CoopCharacter(clientNum); // mod (coop): the colours are per character
     switch ( clientNum )
     {
     case 0:
@@ -225,11 +253,12 @@ static void CG_DrawPlayerScoreBar(
     widthCut = (float)(isLocal ? 0 : 20);
     if ( zombiemode->current.enabled )
     {
-        if ( clientNum == 0 )
+        const int character = CG_SP_CoopCharacter(clientNum); // mod (coop): the bar is per character (was clientNum)
+        if ( character == 0 )
             materialName = "scorebar_zom_1";
-        else if ( clientNum == 1 )
+        else if ( character == 1 )
             materialName = "scorebar_zom_2";
-        else if ( clientNum == 2 )
+        else if ( character == 2 )
             materialName = "scorebar_zom_3";
         else
             materialName = "scorebar_zom_4";
@@ -574,11 +603,12 @@ static float CG_SP_DrawClientScore(
     // NOT PORTED: the zombietron bar colours by clientNum (SP 0x00891bb5..0x00891c32). Five is not zombietron.
     if ( zombiemode->current.enabled )
     {
-        if ( clientNum == 0 )
+        const int character = CG_SP_CoopCharacter(clientNum); // mod (coop): the bar is per character (was clientNum)
+        if ( character == 0 )
             materialName = "scorebar_zom_long_1";
-        else if ( clientNum == 1 )
+        else if ( character == 1 )
             materialName = "scorebar_zom_long_2";
-        else if ( clientNum == 2 )
+        else if ( character == 2 )
             materialName = "scorebar_zom_long_3";
         else
             materialName = "scorebar_zom_long_4";

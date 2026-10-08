@@ -128,7 +128,7 @@ void __cdecl CG_RegisterVisionSetsDvars()
 
 void __cdecl CG_InitVisionSetsMenu()
 {
-    DB_EnumXAssets(ASSET_TYPE_RAWFILE, (void (__cdecl *)(XAssetHeader, void *))CG_AddVisionSetMenuItem, 0, 0);
+    DB_EnumXAssets(ASSET_TYPE_RAWFILE, BO1_FNCAST(void (__cdecl *)(XAssetHeader, void *), CG_AddVisionSetMenuItem), 0, 0);
 }
 
 void __cdecl CG_AddVisionSetMenuItem(XAssetHeader header)

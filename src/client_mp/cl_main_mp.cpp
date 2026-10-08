@@ -3146,6 +3146,7 @@ void __cdecl CL_RunOncePerClientFrame(int localClientNum, int msec)
 
     PROF_SCOPED("CL_RunOncePerClientFrame");
 
+    CL_CoopConnectFrame(); // mod (coop): a command-line connect waits for the front end (cl_main_pc_mp.cpp)
     CL_RunNetworkFrame(localClientNum);
     if ( UI_IsFullscreen(localClientNum) )
         CL_SyncGpu();
@@ -4242,6 +4243,9 @@ void __cdecl CL_InitOnceForAllClients()
     clanName = _Dvar_RegisterString("clanName", (char *)"", 3u, "Your clan abbreviation");
     _Dvar_RegisterInt("rate", 25000, 1000, 25000, 3u, "Player's preferred baud rate");
     _Dvar_RegisterInt("snaps", 20, 1, 30, 3u, "Snapshot rate");
+    // mod (coop): userinfo (not archived): the client number this player asks the host for (SV_DirectConnect); the
+    // co-op lobby gives each player the number of their character (web/shared/launch.ts, tools/coop.ps1). -1 = any.
+    _Dvar_RegisterInt("bo1_slot", -1, -1, 31, 2u, "coop: client number to ask the host for (-1 = the first free one)");
     _Dvar_RegisterBool("cl_punkbuster", 0, 0x42u, "Determines whether PunkBuster is enabled");
     _Dvar_RegisterString("password", (char *)"", 2u, "password");
     nextdemo = _Dvar_RegisterString("nextdemo", (char *)"", 0, "The next demo to play");

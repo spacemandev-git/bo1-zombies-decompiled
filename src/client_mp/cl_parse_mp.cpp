@@ -332,6 +332,40 @@ void __cdecl CL_ParseMapCenter()
     sscanf(mapCenterString, "%f %f %f", cls.mapCenter, &cls.mapCenter[1], &cls.mapCenter[2]);
 }
 
+// mod (coop): a client without a local server (co-op client) learns the level from the gamestate. The snapshot field
+// tables depend on zombiemode (sv_msg_write.cpp, msg_mp.cpp), which only Com_LoadLevelFastFiles sets (CL_InitCGame,
+// after this message's baselines) and the front end clears, so it is set from the map name first, by the same rule.
+static void CL_CoopGamestateMode(const char *mapname)
+{
+    if ( com_sv_running->current.enabled || !bo1_zombies || !bo1_zombies->current.enabled || Com_IsMenuLevel(mapname) )
+        return;
+    const bool zombieMap = Com_IsZombieMap(mapname);
+    if ( zombiemode->current.enabled != zombieMap )
+        Com_Printf(14, "coop: zombiemode %d for %s before the gamestate's baselines\n", zombieMap, mapname);
+    Dvar_SetBool((dvar_s *)zombiemode, zombieMap);
+}
+
+// mod (coop): the host's snapshot layout (systeminfo bo1_coop_net: actor slots and entity number bits, from its
+// bo1_mod_maxactors / bo1_mod_netents when its map started, SV_SP_PublishCoopConfig) must equal this client's (from the
+// same dvars when its last local map, the front end, started), or every snapshot decodes wrong. Leave with a message.
+static void CL_CoopGamestateCheck()
+{
+    extern int g_maxActors;
+    int hostActors = 0;
+    int hostEntBits = 0;
+
+    if ( com_sv_running->current.enabled )
+        return;
+    const char *net = Info_ValueForKey(CL_GetConfigString(1u), "bo1_coop_net");
+    if ( !*net || sscanf(net, "%d %d", &hostActors, &hostEntBits) != 2 )
+        return; // a host without the co-op changes, or an MP map
+    Com_Printf(14, "coop: host layout %d actor slots, %d entity bits; this machine %d, %d\n", hostActors, hostEntBits,
+        g_maxActors, g_entNumBits);
+    if ( hostActors != g_maxActors || hostEntBits != g_entNumBits )
+        Com_Error(ERR_DROP, "The host runs other mod settings (bo1_mod_maxactors / bo1_mod_netents: %d actor slots, %d entity bits; "
+            "this machine %d, %d). Start every machine with the same mod settings.", hostActors, hostEntBits, g_maxActors, g_entNumBits);
+}
+
 void __cdecl CL_ParseGamestate(int localClientNum, msg_t *msg)
 {
     unsigned int v4; // [esp+0h] [ebp-1A0h]
@@ -386,6 +420,7 @@ void __cdecl CL_ParseGamestate(int localClientNum, msg_t *msg)
     cls.mapCenter[2] = 0.0;
     clc->serverCommandSequence = MSG_ReadLong(msg);
     MSG_ReadString(msg, mapname, 0x20u);
+    CL_CoopGamestateMode(mapname); // mod (coop)
     MSG_ReadString(msg, gametype, 0x20u);
     serverConfigStringChecksum = MSG_ReadLong(msg);
     party = 1;
@@ -458,6 +493,7 @@ void __cdecl CL_ParseGamestate(int localClientNum, msg_t *msg)
                     nextConstConfigStringNumber = CCS_GetConfigStringNum(++nextConstConfigStringIndex);
                 }
                 CL_ParseMapCenter();
+                CL_CoopGamestateCheck(); // mod (coop): before the baselines
                 break;
             case 4:
                 newnum = MSG_ReadEntityIndex(msg, g_entNumBits); // mod (L43): the server writes baselines with g_entNumBits (retail 10)
